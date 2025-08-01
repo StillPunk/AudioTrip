@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AudioSurf WEB</title>
+    <link rel="stylesheet" href="index.css" />
+    <!-- Three.js Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- Post-processing for Bloom Effect -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
+  <link rel="stylesheet" href="/index.css">
+</head>
+  <body>
+    <div id="ui-container">
+      <div id="vignette"></div>
+      <div id="start-screen">
+        <h1>AudioSurf WEB</h1>
+        <p>Choose a song to start your ride</p>
+        <label for="audio-file-input" class="file-label">Select Audio File</label>
+        <input type="file" id="audio-file-input" accept="audio/*" />
+      </div>
+      <div id="loading-screen" class="hidden">
+        <p id="loading-text">Loading...</p>
+        <p id="analysis-text" class="hidden">Analyzing your ride...</p>
+      </div>
+      <div id="score-container" class="hidden">
+        Score: <span id="score">0</span>
+      </div>
+       <div id="end-screen" class="hidden">
+        <h1>Ride Complete!</h1>
+        <p>Final Score: <span id="final-score">0</span></p>
+        <button id="restart-button">Play Again</button>
+      </div>
+    </div>
+    <canvas id="webgl-canvas"></canvas>
+    <script type="module" src="index.js"></script>
+  <script type="module" src="/index.tsx"></script>
+</body>
+</html>

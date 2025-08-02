@@ -9,7 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-
+    "three": "^0.179.1"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",

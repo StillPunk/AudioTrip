@@ -55,6 +55,7 @@ body {
   box-shadow: 0 0 15px #0ff, inset 0 0 10px #0ff;
   pointer-events: all; /* Capture mouse events on UI panels */
   min-width: 300px;
+  max-width: 800px;
 }
 
 h1 {

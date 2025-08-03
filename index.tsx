@@ -4,6 +4,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 
 
 // --- DOM Elements ---
@@ -45,7 +46,7 @@ let shakeTime = 0;
 let shakeIntensity = 0;
 
 // --- Game Constants ---
-const LANE_WIDTH = 4;
+const LANE_WIDTH = 5;
 const NUM_LANES = 3;
 const LANE_POSITIONS = [-(NUM_LANES - 1) / 2 * LANE_WIDTH, 0, (NUM_LANES - 1) / 2 * LANE_WIDTH];
 const ANALYSIS_CHUNK_SAMPLES = 4096;
@@ -138,9 +139,9 @@ async function init() {
     scene.add(positiveBurst);
 
     const renderScene = new RenderPass(scene, camera);
-    const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.85);
-    bloomPass.threshold = 0.2;
-    bloomPass.strength = 1.2;
+    const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.0, 0.4, 0.85);
+    bloomPass.threshold = 0.25;
+    bloomPass.strength = 1.0;
     bloomPass.radius = 0.5;
 
     composer = new EffectComposer(renderer);
@@ -497,14 +498,20 @@ function recycleToPool(block: any) {
 }
 
 function createColorBlock() {
-    const geometry = new THREE.BoxGeometry(LANE_WIDTH * 0.8, 1, 2);
-    const material = new THREE.MeshStandardMaterial({ emissiveIntensity: 1.5 });
+    // Единая геометрия для всех блоков в виде "бруска мыла".
+    // Задаем фиксированный размер блока, чтобы он не менялся с шириной полосы.
+    const blockWidth = 1.5;
+    const geometry = new RoundedBoxGeometry(blockWidth, blockWidth, blockWidth * 2, 6, 0.5);
+    const material = new THREE.MeshStandardMaterial({ emissiveIntensity: 0.4 });
     return new THREE.Mesh(geometry, material);
 }
 
 function createGreyBlock() {
-    const geometry = new THREE.BoxGeometry(LANE_WIDTH * 0.8, 3, 2);
-    const material = new THREE.MeshStandardMaterial({ color: 0x888888, metalness: 0.5, roughness: 0.6 });
+    // Единая геометрия для всех блоков в виде "бруска мыла".
+    // Задаем фиксированный размер блока, чтобы он не менялся с шириной полосы.
+    const blockWidth = 1.5;
+    const geometry = new RoundedBoxGeometry(blockWidth, blockWidth, blockWidth * 2, 6, 0.5);
+    const material = new THREE.MeshStandardMaterial({ color: 0xdddddd, metalness: 0.1, roughness: 0.8 });
     return new THREE.Mesh(geometry, material);
 }
 
@@ -612,7 +619,7 @@ function updateSceneColors(energy: number) {
         finalColor.set(midColor).lerp(intenseColor, Math.min((energy - 0.55) / 0.45, 1.0));
     }
 
-    (composer.passes[1] as UnrealBloomPass).strength = 0.8 + energy * 1.5;
+    (composer.passes[1] as UnrealBloomPass).strength = 0.5 + energy * 0.7;
 
     const lerpFactor = 0.05;
 
@@ -726,7 +733,7 @@ function animate() {
         // Update other scene elements
         analyser.getByteFrequencyData(frequencyData);
         const bass = (frequencyData[1] + frequencyData[2]) / 2 / 255;
-        trackGroup.children.forEach((c: any) => { if(c.material?.emissive) c.material.emissiveIntensity = 0.8 + bass * 2.0;});
+        trackGroup.children.forEach((c: any) => { if(c.material?.emissive) c.material.emissiveIntensity = 0.6 + bass * 1.2;});
 
         backgroundTunnel.rotation.z += (0.001 + bass * 0.005);
         nebulaParticles.position.z = camera.position.z - 300;
@@ -762,9 +769,8 @@ function animate() {
         for (const block of allBlocks) {
             if (block.mesh && block.type === 'color') {
                 const h = 0.6 - (currentEnergy * 0.6); // cyan to red
-                (block.mesh.material as THREE.MeshStandardMaterial).color.setHSL(h, 1, 0.6);
-                (block.mesh.material as THREE.MeshStandardMaterial).emissive.setHSL(h, 1, 0.5);
-                block.mesh.scale.y = 1 + currentEnergy * 2;
+                (block.mesh.material as THREE.MeshStandardMaterial).color.setHSL(h, 1, 0.4);
+                (block.mesh.material as THREE.MeshStandardMaterial).emissive.setHSL(h, 1, 0.15);
             }
         }
 

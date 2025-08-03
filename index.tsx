@@ -59,105 +59,105 @@ async function loadPlayerModel(): Promise<THREE.Group> {
     const loader = new GLTFLoader();
     return new Promise((resolve, reject) => {
         loader.load('hurricane_triplestar__low_poly.glb',
-            (gltf) => {
-                const modelGroup = gltf.scene;
+          (gltf) => {
+              const modelGroup = gltf.scene;
 
-                const box = new THREE.Box3().setFromObject(modelGroup);
-                const size = box.getSize(new THREE.Vector3());
-                const maxDim = Math.max(size.x, size.y, size.z);
-                const scale = 6 / maxDim; // Increased scale for better visibility
-                modelGroup.scale.set(scale, scale, scale);
-                
-                const newBox = new THREE.Box3().setFromObject(modelGroup);
-                const center = newBox.getCenter(new THREE.Vector3());
-                modelGroup.position.sub(center);
+              const box = new THREE.Box3().setFromObject(modelGroup);
+              const size = box.getSize(new THREE.Vector3());
+              const maxDim = Math.max(size.x, size.y, size.z);
+              const scale = 6 / maxDim; // Increased scale for better visibility
+              modelGroup.scale.set(scale, scale, scale);
 
-                resolve(modelGroup);
-            },
-            undefined,
-            (error) => {
-                console.error('Failed to load player model.', error);
-                reject(error);
-            }
+              const newBox = new THREE.Box3().setFromObject(modelGroup);
+              const center = newBox.getCenter(new THREE.Vector3());
+              modelGroup.position.sub(center);
+
+              resolve(modelGroup);
+          },
+          undefined,
+          (error) => {
+              console.error('Failed to load player model.', error);
+              reject(error);
+          }
         );
     });
 }
 
 
 async function init() {
-  // Update UI for loading
-  startPrompt.textContent = 'Loading spaceship...';
-  fileLabel.classList.add('hidden');
-  fileInput.disabled = true;
+    // Update UI for loading
+    startPrompt.textContent = 'Loading spaceship...';
+    fileLabel.classList.add('hidden');
+    fileInput.disabled = true;
 
-  // Basic scene setup
-  scene = new THREE.Scene();
-  
-  // Add lighting to show model textures
-  const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
-  scene.add(ambientLight);
-  const directionalLight = new THREE.DirectionalLight(0xffffff, 1.5);
-  directionalLight.position.set(5, 5, 5);
-  scene.add(directionalLight);
+    // Basic scene setup
+    scene = new THREE.Scene();
 
-  scene.fog = new THREE.Fog(0x000000, 10, 250);
-  camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000);
-  camera.position.set(0, 5, 20);
-  camera.lookAt(0, 0, 0);
-  renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.setPixelRatio(window.devicePixelRatio);
-  renderer.setClearColor(0x000000);
+    // Add lighting to show model textures
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+    scene.add(ambientLight);
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 1.5);
+    directionalLight.position.set(5, 5, 5);
+    scene.add(directionalLight);
 
-  // Load model before proceeding
-  try {
-    player = await loadPlayerModel();
-    scene.add(player);
-    player.visible = false; // Keep it hidden until game starts
-  } catch (error) {
-    startPrompt.textContent = 'Error loading assets. Please refresh.';
-    startPrompt.style.color = '#f55';
-    return;
-  }
+    scene.fog = new THREE.Fog(0x000000, 10, 250);
+    camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000);
+    camera.position.set(0, 5, 20);
+    camera.lookAt(0, 0, 0);
+    renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setClearColor(0x000000);
 
-  // Continue with the rest of the scene
-  backgroundTunnel = createBackgroundTunnel();
-  scene.add(backgroundTunnel);
-  
-  nebulaParticles = createNebulas();
-  scene.add(nebulaParticles);
+    // Load model before proceeding
+    try {
+        player = await loadPlayerModel();
+        scene.add(player);
+        player.visible = false; // Keep it hidden until game starts
+    } catch (error) {
+        startPrompt.textContent = 'Error loading assets. Please refresh.';
+        startPrompt.style.color = '#f55';
+        return;
+    }
 
-  starBursts = createStarBursts();
-  scene.add(starBursts);
+    // Continue with the rest of the scene
+    backgroundTunnel = createBackgroundTunnel();
+    scene.add(backgroundTunnel);
 
-  meteorShower = createMeteorShower();
-  scene.add(meteorShower);
+    nebulaParticles = createNebulas();
+    scene.add(nebulaParticles);
 
-  positiveBurst = createPositiveBurst();
-  scene.add(positiveBurst);
+    starBursts = createStarBursts();
+    scene.add(starBursts);
 
-  const renderScene = new RenderPass(scene, camera);
-  const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.85);
-  bloomPass.threshold = 0.2;
-  bloomPass.strength = 1.2;
-  bloomPass.radius = 0.5;
+    meteorShower = createMeteorShower();
+    scene.add(meteorShower);
 
-  composer = new EffectComposer(renderer);
-  composer.addPass(renderScene);
-  composer.addPass(bloomPass);
+    positiveBurst = createPositiveBurst();
+    scene.add(positiveBurst);
 
-  window.addEventListener('resize', onWindowResize);
-  document.addEventListener('keydown', onKeyDown);
-  document.addEventListener('keyup', onKeyUp);
-  fileInput.addEventListener('change', onFileSelect);
-  restartButton.addEventListener('click', () => location.reload());
+    const renderScene = new RenderPass(scene, camera);
+    const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.85);
+    bloomPass.threshold = 0.2;
+    bloomPass.strength = 1.2;
+    bloomPass.radius = 0.5;
 
-  // Unlock UI
-  startPrompt.textContent = 'Choose a song to start your ride';
-  fileLabel.classList.remove('hidden');
-  fileInput.disabled = false;
+    composer = new EffectComposer(renderer);
+    composer.addPass(renderScene);
+    composer.addPass(bloomPass);
 
-  animate();
+    window.addEventListener('resize', onWindowResize);
+    document.addEventListener('keydown', onKeyDown);
+    document.addEventListener('keyup', onKeyUp);
+    fileInput.addEventListener('change', onFileSelect);
+    restartButton.addEventListener('click', () => location.reload());
+
+    // Unlock UI
+    startPrompt.textContent = 'Choose a song to start your ride';
+    fileLabel.classList.remove('hidden');
+    fileInput.disabled = false;
+
+    animate();
 }
 
 function onKeyDown(event: KeyboardEvent) {
@@ -225,7 +225,7 @@ function createStarBursts() {
         positions.push(Math.cos(angle) * radius * side, y, Math.sin(angle) * radius);
     }
     geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-    
+
     const sprite = new THREE.TextureLoader().load('https://threejs.org/examples/textures/sprites/spark1.png');
     const mat = new THREE.PointsMaterial({
         size: 10, map: sprite, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0
@@ -269,9 +269,9 @@ function createMeteorShower() {
     const numPoints = 300;
     for (let i = 0; i < numPoints; i++) {
         positions.push(
-            (Math.random() - 0.5) * 800,
-            (Math.random() - 0.5) * 400,
-            (Math.random() - 0.5) * 1000
+          (Math.random() - 0.5) * 800,
+          (Math.random() - 0.5) * 400,
+          (Math.random() - 0.5) * 1000
         );
     }
     geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
@@ -338,16 +338,16 @@ async function analyzeAudioAndGenerateTrack(arrayBuffer: ArrayBuffer) {
         if (rms > maxRms) maxRms = rms;
         energyMap.push(rms);
     }
-    
-    if (maxRms === 0) maxRms = 1; 
+
+    if (maxRms === 0) maxRms = 1;
     const normalizedEnergyMap = energyMap.map(rms => (rms / maxRms));
     const smoothedEnergyMap = smoothArray(normalizedEnergyMap, 5);
     songData = { duration, energyMap: smoothedEnergyMap };
-    
+
     trackCurve = createTrackPath(smoothedEnergyMap, duration);
-    
+
     pregenerateBlocks(smoothedEnergyMap);
-    
+
     if (trackGroup) scene.remove(trackGroup);
     trackGroup = createTrackMesh(trackCurve);
     scene.add(trackGroup);
@@ -355,9 +355,9 @@ async function analyzeAudioAndGenerateTrack(arrayBuffer: ArrayBuffer) {
 
 function createTrackPath(energyMap: number[], duration: number): THREE.CatmullRomCurve3 {
     const points: THREE.Vector3[] = [];
-    const totalTrackLength = duration * 150; 
-    
-    let pos = new THREE.Vector3(0, 0, 0); 
+    const totalTrackLength = duration * 150;
+
+    let pos = new THREE.Vector3(0, 0, 0);
     let vel = new THREE.Vector3(0, 0, 0);
 
     points.push(pos.clone());
@@ -369,22 +369,22 @@ function createTrackPath(energyMap: number[], duration: number): THREE.CatmullRo
 
     for (let i = 0; i < energyMap.length; i++) {
         const energy = energyMap[i];
-        
+
         const turnForce = Math.sin(i * 0.15) * energy * turnInfluence;
-        const climbForce = (energy - 0.2) * climbInfluence; 
-        
+        const climbForce = (energy - 0.2) * climbInfluence;
+
         const centerPullX = -pos.x * centeringForce;
-        const centerPullY = -pos.y * centeringForce; 
+        const centerPullY = -pos.y * centeringForce;
 
         vel.x += turnForce + centerPullX;
         vel.y += climbForce + centerPullY;
-        
+
         vel.multiplyScalar(damping);
 
         pos.x += vel.x;
         pos.y += vel.y;
         pos.z = -(i / energyMap.length) * totalTrackLength;
-        
+
         points.push(pos.clone());
     }
 
@@ -397,7 +397,7 @@ function createTrackMesh(curve: THREE.CatmullRomCurve3) {
     const roadWidth = NUM_LANES * LANE_WIDTH;
 
     const up = new THREE.Vector3(0, 1, 0);
-    
+
     const curvePoints = curve.getPoints(segments);
     const leftRailPoints: THREE.Vector3[] = [];
     const rightRailPoints: THREE.Vector3[] = [];
@@ -439,12 +439,12 @@ function createTrackMesh(curve: THREE.CatmullRomCurve3) {
     }
     roadGeo.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
     roadGeo.computeVertexNormals();
-    
+
     const roadMat = new THREE.MeshStandardMaterial({
         side: THREE.DoubleSide, transparent: true, opacity: 0.1, metalness: 0.2, roughness: 0.8
     });
     group.add(new THREE.Mesh(roadGeo, roadMat));
-    
+
     return group;
 }
 
@@ -520,7 +520,7 @@ function pregenerateBlocks(energyMap: number[]) {
 
         const isObstacleRun = energy > 0.6 && Math.random() < 0.4 && consecutiveObstacles < 2;
         const isMultiBlock = energy > 0.4 && Math.random() < energy;
-        
+
         if (isObstacleRun) {
             const openLane = Math.floor(Math.random() * NUM_LANES);
             for (let lane = 0; lane < NUM_LANES; lane++) {
@@ -542,7 +542,7 @@ function pregenerateBlocks(energyMap: number[]) {
             if (laneChoice < 0.6) lane = lastLane;
             else if (laneChoice < 0.8) lane = (lastLane + 1) % NUM_LANES;
             else lane = (lastLane + NUM_LANES - 1) % NUM_LANES;
-            
+
             allBlocks.push({ progress, lane, type: 'color', mesh: null, collected: false });
             lastLane = lane;
             consecutiveObstacles = 0;
@@ -568,14 +568,14 @@ function updateBlocks() {
         // CORRECTED BINORMAL FOR BLOCK PLACEMENT
         const binormal = new THREE.Vector3().crossVectors(tangent, up).normalize();
         point.add(binormal.multiplyScalar(LANE_POSITIONS[block.lane]));
-        
+
         block.mesh.position.copy(point);
         block.mesh.lookAt(trackCurve.getPointAt(Math.min(block.progress + 0.01, 1)));
     }
 }
 
 function checkCollisions() {
-    const collisionThreshold = 0.005; 
+    const collisionThreshold = 0.005;
     for (const block of allBlocks) {
         if (block.mesh && !block.collected && Math.round(actualPlayerLane) === block.lane && Math.abs(block.progress - playerProgress) < collisionThreshold) {
             if (block.type === 'color') {
@@ -589,7 +589,7 @@ function checkCollisions() {
                 setTimeout(() => { vignette.style.opacity = '0'; }, 100);
             }
             scoreEl.textContent = score.toString();
-            block.collected = true; 
+            block.collected = true;
             recycleToPool(block);
         }
     }
@@ -608,11 +608,11 @@ function updateSceneColors(energy: number) {
     } else {
         finalColor.set(midColor).lerp(intenseColor, Math.min((energy - 0.55) / 0.45, 1.0));
     }
-    
+
     (composer.passes[1] as UnrealBloomPass).strength = 0.8 + energy * 1.5;
-    
+
     const lerpFactor = 0.05;
-    
+
     if (trackGroup && backgroundTunnel) {
         trackGroup.children.forEach((child: any) => {
             // This logic specifically targets the rails (which are TubeGeometry with an emissive material property)
@@ -622,7 +622,7 @@ function updateSceneColors(energy: number) {
                 child.material.emissive.lerp(finalColor, lerpFactor);
             }
         });
-        
+
         backgroundTunnel.children.forEach((c: any) => c.material.color.lerp(finalColor, lerpFactor));
     }
     scene.fog.color.lerp(finalColor, lerpFactor);
@@ -639,9 +639,14 @@ function animate() {
         const energyIndex = Math.min(Math.floor(playerProgress * songData.energyMap.length), songData.energyMap.length - 1);
         const currentEnergy = songData.energyMap[energyIndex] || 0;
 
+        // --- Core track vectors for this frame ---
         const currentPoint = trackCurve.getPointAt(playerProgress);
         const tangent = trackCurve.getTangentAt(playerProgress).normalize();
-        
+        const up = new THREE.Vector3(0, 1, 0);
+        const binormal = new THREE.Vector3().crossVectors(tangent, up).normalize();
+        const trackNormal = new THREE.Vector3().crossVectors(binormal, tangent).normalize(); // The "up" vector relative to the track
+
+        // --- Player Logic ---
         // 1. Determine target lane from keyboard controls
         if (keyState.left) {
             targetPlayerLane = 0; // Left lane
@@ -654,31 +659,38 @@ function animate() {
         // 2. Smoothly move towards target lane
         actualPlayerLane = THREE.MathUtils.lerp(actualPlayerLane, targetPlayerLane, 0.15);
 
-        // 3. Calculate Player's position
-        const up = new THREE.Vector3(0, 1, 0);
-        // CORRECTED: Flipped cross product to fix inverted controls
-        const binormal = new THREE.Vector3().crossVectors(tangent, up).normalize();
-        // Use lerp to find the exact position between lanes
-        const laneOffsetValue = THREE.MathUtils.lerp(LANE_POSITIONS[0], LANE_POSITIONS[2], actualPlayerLane / 2);
-        const finalLaneOffset = binormal.clone().multiplyScalar(laneOffsetValue);
-        player.position.copy(currentPoint).add(finalLaneOffset);
-        
-        // 4. Update player orientation
+        // 3. Calculate Player's final position
+        const horizontalOffset = binormal.clone().multiplyScalar(THREE.MathUtils.lerp(LANE_POSITIONS[0], LANE_POSITIONS[2], actualPlayerLane / 2));
+        const SHIP_HOVER_HEIGHT = 1.2; // How high the ship floats above the track
+        const verticalOffset = trackNormal.clone().multiplyScalar(SHIP_HOVER_HEIGHT);
+        player.position.copy(currentPoint).add(horizontalOffset).add(verticalOffset);
+
+        // 4. Update player orientation to follow the track
         const lookAtPoint = trackCurve.getPointAt(Math.min(playerProgress + 0.01, 1));
-        player.lookAt(lookAtPoint);
+        const lookAtTargetPoint = lookAtPoint.add(verticalOffset); // Re-use the same vertical offset to look parallel to the track
+        player.lookAt(lookAtTargetPoint);
         player.rotateY(Math.PI); // Correct the orientation to fly forward
 
-        // 5. CAMERA LOGIC REWRITE - CRITICAL FIX
-        const backwardsOffset = tangent.clone().multiplyScalar(-15.0);
-        const upOffset = new THREE.Vector3(0, 6.0, 0);
-        
-        const idealCameraPos = player.position.clone().add(backwardsOffset).add(upOffset);
-        camera.position.lerp(idealCameraPos, 0.15);
-        
-        // "Nail" the camera to the player's back for a stable third-person view
-        camera.lookAt(player.position);
-        
-        // Camera Shake
+        // --- Camera Logic ---
+        const CAM_HEIGHT = 6.0; // Высота камеры над трассой
+        const CAM_DISTANCE_BEHIND = 8.0; // Расстояние позади корабля
+        const LOOK_AHEAD_DISTANCE = 40.0; // Насколько далеко вперед смотрит камера
+
+        // 5.1. Calculate ideal camera position (on track's center line)
+        const cameraVerticalOffset = trackNormal.clone().multiplyScalar(CAM_HEIGHT);
+        const cameraBehindOffset = tangent.clone().multiplyScalar(-CAM_DISTANCE_BEHIND);
+        const idealCameraPos = currentPoint.clone().add(cameraVerticalOffset).add(cameraBehindOffset);
+
+        // 5.2. Move camera
+        camera.position.lerp(idealCameraPos, 1.0); // Keep it snappy, directly on the calculated position
+
+        // 5.3. Calculate camera look-at target (ahead on the track)
+        const cameraLookAtTarget = currentPoint.clone().add(tangent.clone().multiplyScalar(LOOK_AHEAD_DISTANCE));
+
+        // 5.4. Point camera
+        camera.lookAt(cameraLookAtTarget);
+
+        // 5.5. Эффект тряски камеры (применяется поверх новой позиции)
         if (shakeTime > 0) {
             camera.position.x += (Math.random() - 0.5) * shakeIntensity;
             camera.position.y += (Math.random() - 0.5) * shakeIntensity;
@@ -695,12 +707,12 @@ function animate() {
         analyser.getByteFrequencyData(frequencyData);
         const bass = (frequencyData[1] + frequencyData[2]) / 2 / 255;
         trackGroup.children.forEach((c: any) => { if(c.material?.emissive) c.material.emissiveIntensity = 0.8 + bass * 2.0;});
-        
+
         backgroundTunnel.rotation.z += (0.001 + bass * 0.005);
         nebulaParticles.position.z = camera.position.z - 300;
         starBursts.position.z = camera.position.z - 500;
         meteorShower.position.z = camera.position.z - 500;
-        
+
         // Update high-energy FX
         (starBursts.material as THREE.PointsMaterial).opacity = THREE.MathUtils.lerp((starBursts.material as THREE.PointsMaterial).opacity, currentEnergy > 0.6 ? (currentEnergy-0.6)*2 : 0, 0.1);
         meteorShower.visible = currentEnergy > 0.75;

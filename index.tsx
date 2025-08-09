@@ -33,6 +33,7 @@ let score = 0;
 
 // --- Game Data & State ---
 let trackCurve: THREE.CatmullRomCurve3;
+let trackFrames: { point: THREE.Vector3; tangent: THREE.Vector3; normal: THREE.Vector3; binormal: THREE.Vector3; }[] = [];
 let playerProgress = 0;
 let lastPlayerProgress = 0; // To track progress between frames for accurate collision
 let songData: { duration: number, energyMap: number[] } | null = null;
@@ -347,13 +348,47 @@ async function analyzeAudioAndGenerateTrack(arrayBuffer: ArrayBuffer) {
     songData = { duration, energyMap: smoothedEnergyMap };
 
     trackCurve = createTrackPath(smoothedEnergyMap, duration);
+    const trackSegments = Math.floor(duration * 30); // Lowered from 60 to 30 for performance
+    trackFrames = generateTrackFrames(trackCurve, smoothedEnergyMap, trackSegments);
 
     pregenerateBlocks(smoothedEnergyMap);
 
     if (trackGroup) scene.remove(trackGroup);
-    trackGroup = createTrackMesh(trackCurve);
+    trackGroup = createTrackMesh(trackFrames);
     scene.add(trackGroup);
 }
+
+function generateTrackFrames(curve: THREE.CatmullRomCurve3, energyMap: number[], segments: number) {
+    const frames = [];
+    let lastUp = new THREE.Vector3(0, 1, 0);
+
+    for (let i = 0; i <= segments; i++) {
+        const progress = i / segments;
+        const point = curve.getPointAt(progress);
+        const tangent = curve.getTangentAt(progress).normalize();
+
+        const energyIndex = Math.min(Math.floor(progress * energyMap.length), energyMap.length - 1);
+        const energy = energyMap[energyIndex] || 0;
+
+        const turnInfluence = Math.sin(progress * energyMap.length * 0.15);
+
+        let rollDelta = 0;
+        if (energy > 0.4) {
+            rollDelta = turnInfluence * (energy - 0.4) * -0.35; // The roll factor
+        }
+
+        const normal = lastUp.clone();
+        normal.projectOnPlane(tangent).normalize();
+        normal.applyAxisAngle(tangent, rollDelta);
+
+        const binormal = new THREE.Vector3().crossVectors(tangent, normal);
+
+        frames.push({ point, tangent, normal, binormal });
+        lastUp = normal;
+    }
+    return frames;
+}
+
 
 function createTrackPath(energyMap: number[], duration: number): THREE.CatmullRomCurve3 {
     const points: THREE.Vector3[] = [];
@@ -393,23 +428,18 @@ function createTrackPath(energyMap: number[], duration: number): THREE.CatmullRo
     return new THREE.CatmullRomCurve3(points, false, 'catmullrom', 0.5);
 }
 
-function createTrackMesh(curve: THREE.CatmullRomCurve3) {
+function createTrackMesh(frames: any[]) {
     const group = new THREE.Group();
-    const segments = Math.floor(curve.points.length * 1.5);
+    const segments = frames.length - 1;
     const roadWidth = NUM_LANES * LANE_WIDTH;
 
-    const up = new THREE.Vector3(0, 1, 0);
-
-    const curvePoints = curve.getPoints(segments);
     const leftRailPoints: THREE.Vector3[] = [];
     const rightRailPoints: THREE.Vector3[] = [];
     const leftLinePoints: THREE.Vector3[] = [];
     const rightLinePoints: THREE.Vector3[] = [];
 
-    for (let i = 0; i < curvePoints.length; i++) {
-        const point = curvePoints[i];
-        const tangent = curve.getTangentAt(i / curvePoints.length).normalize();
-        const binormal = new THREE.Vector3().crossVectors(tangent, up).normalize();
+    for (let i = 0; i < frames.length; i++) {
+        const { point, binormal } = frames[i];
 
         const leftRailOffset = binormal.clone().multiplyScalar(-roadWidth / 2 - 0.2);
         const rightRailOffset = binormal.clone().multiplyScalar(roadWidth / 2 + 0.2);
@@ -432,9 +462,9 @@ function createTrackMesh(curve: THREE.CatmullRomCurve3) {
 
     const roadGeo = new THREE.BufferGeometry();
     const vertices: number[] = [];
-    for (let i = 0; i < curvePoints.length - 1; i++) {
-        const p1 = curvePoints[i]; const t1 = curve.getTangentAt(i/curvePoints.length); const b1 = new THREE.Vector3().crossVectors(t1,up).normalize();
-        const p2 = curvePoints[i+1]; const t2 = curve.getTangentAt((i+1)/curvePoints.length); const b2 = new THREE.Vector3().crossVectors(t2,up).normalize();
+    for (let i = 0; i < segments; i++) {
+        const p1 = frames[i].point; const b1 = frames[i].binormal;
+        const p2 = frames[i+1].point; const b2 = frames[i+1].binormal;
         const v1 = p1.clone().add(b1.clone().multiplyScalar(-roadWidth/2)); const v2 = p1.clone().add(b1.clone().multiplyScalar(roadWidth/2));
         const v3 = p2.clone().add(b2.clone().multiplyScalar(roadWidth/2)); const v4 = p2.clone().add(b2.clone().multiplyScalar(-roadWidth/2));
         vertices.push(v1.x, v1.y, v1.z,  v4.x, v4.y, v4.z,  v2.x, v2.y, v2.z, v2.x, v2.y, v2.z,  v4.x, v4.y, v4.z,  v3.x, v3.y, v3.z);
@@ -559,6 +589,38 @@ function pregenerateBlocks(energyMap: number[]) {
     }
 }
 
+function getInterpolatedFrame(progress: number) {
+    const totalFrames = trackFrames.length - 1;
+    const idx = progress * totalFrames;
+    const i1 = Math.floor(idx);
+    const i2 = Math.min(i1 + 1, totalFrames);
+    const t = idx - i1;
+
+    if (i1 >= trackFrames.length || i2 >= trackFrames.length) {
+        return trackFrames[totalFrames];
+    }
+    if (i1 === i2) {
+        return trackFrames[i1];
+    }
+
+    const frame1 = trackFrames[i1];
+    const frame2 = trackFrames[i2];
+
+    const interpolatedFrame = {
+        point: new THREE.Vector3().lerpVectors(frame1.point, frame2.point, t),
+        tangent: new THREE.Vector3().lerpVectors(frame1.tangent, frame2.tangent, t).normalize(),
+        normal: new THREE.Vector3().lerpVectors(frame1.normal, frame2.normal, t).normalize(),
+        binormal: new THREE.Vector3().lerpVectors(frame1.binormal, frame2.binormal, t).normalize()
+    };
+
+    // Re-orthogonalize the frame to be safe after interpolation
+    interpolatedFrame.normal.projectOnPlane(interpolatedFrame.tangent).normalize();
+    interpolatedFrame.binormal.crossVectors(interpolatedFrame.tangent, interpolatedFrame.normal);
+
+    return interpolatedFrame;
+}
+
+
 function updateBlocks() {
     const activationZone = playerProgress + BLOCK_VIEW_DISTANCE;
     const deactivationZone = playerProgress - 0.02;
@@ -571,14 +633,14 @@ function updateBlocks() {
         if (block.mesh && block.progress < deactivationZone) { recycleToPool(block); }
         if (!block.mesh) continue;
 
-        const point = trackCurve.getPointAt(block.progress);
-        const tangent = trackCurve.getTangentAt(block.progress);
-        const up = new THREE.Vector3(0, 1, 0);
-        const binormal = new THREE.Vector3().crossVectors(tangent, up).normalize();
-        point.add(binormal.multiplyScalar(LANE_POSITIONS[block.lane]));
-
+        const frame = getInterpolatedFrame(block.progress);
+        const point = frame.point.clone();
+        point.add(frame.binormal.multiplyScalar(LANE_POSITIONS[block.lane]));
         block.mesh.position.copy(point);
-        block.mesh.lookAt(trackCurve.getPointAt(Math.min(block.progress + 0.01, 1)));
+
+        const lookAtPoint = getInterpolatedFrame(Math.min(block.progress + 0.005, 1)).point;
+        block.mesh.up.copy(frame.normal);
+        block.mesh.lookAt(lookAtPoint);
     }
 }
 
@@ -643,7 +705,7 @@ function animate() {
     animationFrameId = requestAnimationFrame(animate);
     const deltaTime = clock.getDelta();
 
-    if (gameStarted && trackCurve && songData) {
+    if (gameStarted && trackCurve && songData && trackFrames.length > 0) {
         lastPlayerProgress = playerProgress;
         playerProgress = Math.min(audioContext.currentTime / songData.duration, 1.0);
 
@@ -651,12 +713,9 @@ function animate() {
         const currentEnergy = songData.energyMap[energyIndex] || 0;
 
         // --- Core track vectors for this frame ---
-        const currentPoint = trackCurve.getPointAt(playerProgress);
-        const tangent = trackCurve.getTangentAt(playerProgress).normalize();
-        const up = new THREE.Vector3(0, 1, 0);
-        // Corrected binormal direction to fix inverted controls. It now matches block placement logic.
-        const binormal = new THREE.Vector3().crossVectors(tangent, up).normalize();
-        const trackNormal = new THREE.Vector3().crossVectors(binormal, tangent).normalize(); // The "up" vector relative to the track
+        const currentFrame = getInterpolatedFrame(playerProgress);
+        const { point: currentPoint, tangent, normal: trackNormal, binormal } = currentFrame;
+
 
         // --- Player Logic ---
         // 1. Determine target lane from keyboard controls
@@ -678,49 +737,53 @@ function animate() {
         player.position.copy(currentPoint).add(horizontalOffset).add(verticalOffset);
 
         // 4. Update player orientation to follow the track
-        // NEW LOGIC: Look at the ship's own future position for smoother, more realistic turning.
-        // This solves the issue of the ship turning before the track does.
-        const lookAheadProgress = 0.003; // Tunable: how far ahead the ship "looks". Smaller is more reactive, larger is more anticipatory.
+        const lookAheadProgress = 0.003; // Tunable: how far ahead the ship "looks"
         const futureProgress = Math.min(playerProgress + lookAheadProgress, 1.0);
+        const futureFrame = getInterpolatedFrame(futureProgress);
 
-        const futurePoint = trackCurve.getPointAt(futureProgress);
-        const futureTangent = trackCurve.getTangentAt(futureProgress).normalize();
+        const futureHorizontalOffset = futureFrame.binormal.clone().multiplyScalar(THREE.MathUtils.lerp(LANE_POSITIONS[0], LANE_POSITIONS[2], actualPlayerLane / 2));
+        const futureVerticalOffset = futureFrame.normal.clone().multiplyScalar(SHIP_HOVER_HEIGHT);
+        const lookAtTargetPoint = futureFrame.point.clone().add(futureHorizontalOffset).add(futureVerticalOffset);
 
-        // We need the frame of reference at the future point to correctly place the look-at target
-        const futureBinormal = new THREE.Vector3().crossVectors(futureTangent, up).normalize();
-        const futureTrackNormal = new THREE.Vector3().crossVectors(futureBinormal, futureTangent).normalize();
-
-        // Calculate the ship's future position, assuming it stays on its current interpolated lane path
-        const futureHorizontalOffset = futureBinormal.clone().multiplyScalar(THREE.MathUtils.lerp(LANE_POSITIONS[0], LANE_POSITIONS[2], actualPlayerLane / 2));
-        const futureVerticalOffset = futureTrackNormal.clone().multiplyScalar(SHIP_HOVER_HEIGHT);
-        const lookAtTargetPoint = futurePoint.clone().add(futureHorizontalOffset).add(futureVerticalOffset);
-
+        player.up.copy(trackNormal);
         player.lookAt(lookAtTargetPoint);
         player.rotateY(Math.PI); // Model is facing backwards, so rotate it.
 
         // --- Camera Logic ---
-        const CAM_HEIGHT = 6.0; // Высота камеры над трассой
-        const CAM_DISTANCE_BEHIND = 8.0; // Расстояние позади корабля
-        const LOOK_AHEAD_DISTANCE = 40.0; // Насколько далеко вперед смотрит камера
-
-        // 5.1. Calculate ideal camera position (on track's center line)
+        const CAM_HEIGHT = 6.0; // How high the camera is above the track
+        const CAM_DISTANCE_BEHIND = 8.0; // How far behind the player the camera is
+        const LOOK_AHEAD_DISTANCE = 40.0;
+        // 5.1. Calculate ideal camera position (on track's center line, behind the player)
+        // This position is "on the rails".
         const cameraVerticalOffset = trackNormal.clone().multiplyScalar(CAM_HEIGHT);
         const cameraBehindOffset = tangent.clone().multiplyScalar(-CAM_DISTANCE_BEHIND);
         const idealCameraPos = currentPoint.clone().add(cameraVerticalOffset).add(cameraBehindOffset);
 
-        // 5.2. Move camera
-        camera.position.lerp(idealCameraPos, 1.0); // Keep it snappy, directly on the calculated position
+        // 5.2. Move camera smoothly but very quickly to the ideal position.
+        // A high, frame-rate independent lerp factor makes it feel locked to the track.
+        const cameraLerpFactor = 1.0 - Math.pow(1, deltaTime); // Converges extremely fast
+        camera.position.lerp(idealCameraPos, 1.0);
 
-        // 5.3. Calculate camera look-at target (ahead on the track)
+        // 5.3. Point camera
+        // The camera's "up" vector must match the track's current roll orientation.
+        camera.up.copy(trackNormal);
+        // Look directly at the player's ship. This ensures the ship is always
+        // the center of focus and the camera follows its lane changes perfectly.
         const cameraLookAtTarget = currentPoint.clone().add(tangent.clone().multiplyScalar(LOOK_AHEAD_DISTANCE));
 
         // 5.4. Point camera
         camera.lookAt(cameraLookAtTarget);
 
-        // 5.5. Эффект тряски камеры (применяется поверх новой позиции)
+        // 5.4. Camera Shake Effect
         if (shakeTime > 0) {
-            camera.position.x += (Math.random() - 0.5) * shakeIntensity;
-            camera.position.y += (Math.random() - 0.5) * shakeIntensity;
+            // Apply shake in camera's local space for a natural feel during rolls
+            const shakeVector = new THREE.Vector3(
+              (Math.random() - 0.5) * shakeIntensity,
+              (Math.random() - 0.5) * shakeIntensity,
+              0 // No shake along the forward/backward axis
+            ).applyQuaternion(camera.quaternion);
+            camera.position.add(shakeVector);
+
             shakeTime -= deltaTime;
         } else {
             shakeIntensity = 0;

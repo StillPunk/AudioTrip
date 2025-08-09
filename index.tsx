@@ -25,7 +25,7 @@ const vignette = document.getElementById('vignette')!;
 
 // --- 3D Scene Variables ---
 let scene: THREE.Scene, camera: THREE.PerspectiveCamera, renderer: THREE.WebGLRenderer, composer: EffectComposer;
-let player: THREE.Group, trackGroup: THREE.Group, backgroundTunnel: THREE.Group, nebulaParticles: THREE.Points, starBursts: THREE.Points, meteorShower: any, positiveBurst: any;
+let player: THREE.Group, trackGroup: THREE.Group, backgroundSphere: THREE.Mesh, nebulaParticles: THREE.Points, normalStarfield: THREE.Points, hyperspaceStreaks: THREE.LineSegments, meteorShower: any, positiveBurst: any;
 let audioContext: AudioContext, analyser: AnalyserNode, source: AudioBufferSourceNode;
 let frequencyData: Uint8Array;
 let animationFrameId: number;
@@ -41,17 +41,35 @@ let gameStarted = false;
 let targetPlayerLane = 1; // The lane the player is moving towards
 let actualPlayerLane = 1; // The player's current physical lane (can be fractional)
 const keyState = { left: false, right: false }; // Keyboard state for controls
+let timeInRedZone = 0; // Tracks how long player is in a high-energy zone
+
+// --- Color & Effects State ---
+let currentColor = new THREE.Color(0x00bfff);
+let lerpedEnergy = 0;
+let hyperspaceEffect = { active: false, timer: 0, duration: 1.5 }; // Increased duration for a better effect
+let lastHyperspaceTriggerTime = -Infinity;
+let hyperspaceJumpCount = 0;
 
 // --- Camera Shake & Effects ---
 let shakeTime = 0;
 let shakeIntensity = 0;
 
 // --- Game Constants ---
+const MAX_HYPERSPACE_JUMPS = 5;
 const LANE_WIDTH = 5;
 const NUM_LANES = 3;
 const LANE_POSITIONS = [-(NUM_LANES - 1) / 2 * LANE_WIDTH, 0, (NUM_LANES - 1) / 2 * LANE_WIDTH];
 const ANALYSIS_CHUNK_SAMPLES = 4096;
 const BLOCK_VIEW_DISTANCE = 0.1;
+const STAR_COUNT = 40000;
+const STAR_POSITIONS = new Float32Array(STAR_COUNT * 3);
+for (let i = 0; i < STAR_COUNT; i++) {
+    const i3 = i * 3;
+    STAR_POSITIONS[i3 + 0] = (Math.random() - 0.5) * 4000;
+    STAR_POSITIONS[i3 + 1] = (Math.random() - 0.5) * 3000;
+    STAR_POSITIONS[i3 + 2] = (Math.random() - 0.5) * 4000;
+}
+
 
 // --- Block Management ---
 const allBlocks: any[] = [];
@@ -124,14 +142,17 @@ async function init() {
     }
 
     // Continue with the rest of the scene
-    backgroundTunnel = createBackgroundTunnel();
-    scene.add(backgroundTunnel);
+    backgroundSphere = createBackgroundSphere();
+    scene.add(backgroundSphere);
 
     nebulaParticles = createNebulas();
     scene.add(nebulaParticles);
 
-    starBursts = createStarBursts();
-    scene.add(starBursts);
+    normalStarfield = createNormalStarfield();
+    scene.add(normalStarfield);
+
+    hyperspaceStreaks = createHyperspaceStreaks();
+    scene.add(hyperspaceStreaks);
 
     meteorShower = createMeteorShower();
     scene.add(meteorShower);
@@ -173,21 +194,20 @@ function onKeyUp(event: KeyboardEvent) {
     if (event.key === 'ArrowRight') keyState.right = false;
 }
 
-function createBackgroundTunnel() {
-    const group = new THREE.Group();
-    const tunnelGeo = new THREE.CylinderGeometry(80, 80, 4000, 32, 100, true);
-    const tunnelMat = new THREE.MeshBasicMaterial({ color: 0x00ffff, wireframe: true, side: THREE.BackSide, transparent: true, opacity: 0.1 });
-    const tunnel1 = new THREE.Mesh(tunnelGeo, tunnelMat);
-    tunnel1.rotation.x = Math.PI / 2;
-    group.add(tunnel1);
-
-    const tunnel2Geo = new THREE.CylinderGeometry(120, 120, 4000, 24, 100, true);
-    const tunnel2Mat = new THREE.MeshBasicMaterial({ color: 0xff00ff, wireframe: true, side: THREE.BackSide, transparent: true, opacity: 0.08 });
-    const tunnel2 = new THREE.Mesh(tunnel2Geo, tunnel2Mat);
-    tunnel2.rotation.x = Math.PI / 2;
-    group.add(tunnel2);
-
-    return group;
+function createBackgroundSphere() {
+    const geo = new THREE.SphereGeometry(800, 64, 32);
+    const mat = new THREE.MeshStandardMaterial({
+        emissive: 0x00aaff,
+        emissiveIntensity: 0.2,
+        side: THREE.BackSide,
+        fog: false,
+        wireframe: true,
+        opacity: 0.4,
+        transparent: true,
+    });
+    const sphere = new THREE.Mesh(geo, mat);
+    sphere.position.set(450, 200, -1500); // Positioned to be visible from the track
+    return sphere;
 }
 
 function createNebulas() {
@@ -212,28 +232,41 @@ function createNebulas() {
 
     geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-    const mat = new THREE.PointsMaterial({ size: 0.5, vertexColors: true, transparent: true, opacity: 0.5, fog: false, blending: THREE.AdditiveBlending });
+    const mat = new THREE.PointsMaterial({ size: 1.5, vertexColors: true, transparent: true, opacity: 0.5, fog: false, blending: THREE.AdditiveBlending }); // Increased size
     return new THREE.Points(geo, mat);
 }
 
-function createStarBursts() {
+function createNormalStarfield(): THREE.Points {
     const geo = new THREE.BufferGeometry();
-    const positions = [];
-    const numPoints = 2000;
-    for (let i = 0; i < numPoints; i++) {
-        const side = Math.random() < 0.5 ? -1 : 1;
-        const radius = 150 + Math.random() * 150;
-        const angle = Math.random() * Math.PI * 2;
-        const y = (Math.random() - 0.5) * 200;
-        positions.push(Math.cos(angle) * radius * side, y, Math.sin(angle) * radius);
-    }
-    geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-
-    const sprite = new THREE.TextureLoader().load('https://threejs.org/examples/textures/sprites/spark1.png');
+    geo.setAttribute('position', new THREE.BufferAttribute(STAR_POSITIONS, 3));
     const mat = new THREE.PointsMaterial({
-        size: 10, map: sprite, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0
+        color: 0xffffff,
+        size: 1.5,
+        transparent: true,
+        opacity: 0.7,
+        fog: false,
+        blending: THREE.AdditiveBlending
     });
     return new THREE.Points(geo, mat);
+}
+
+
+function createHyperspaceStreaks(): THREE.LineSegments {
+    const geo = new THREE.BufferGeometry();
+    const positions = new Float32Array(8000 * 2 * 3);
+    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
+    const mat = new THREE.LineBasicMaterial({
+        color: 0xffffff,
+        transparent: true,
+        opacity: 0,
+        fog: false,
+        blending: THREE.AdditiveBlending
+    });
+
+    const lineSegments = new THREE.LineSegments(geo, mat);
+    lineSegments.visible = false;
+    return lineSegments;
 }
 
 function createPositiveBurst() {
@@ -344,7 +377,8 @@ async function analyzeAudioAndGenerateTrack(arrayBuffer: ArrayBuffer) {
 
     if (maxRms === 0) maxRms = 1;
     const normalizedEnergyMap = energyMap.map(rms => (rms / maxRms));
-    const smoothedEnergyMap = smoothArray(normalizedEnergyMap, 5);
+    // More responsive smoothing
+    const smoothedEnergyMap = smoothArray(normalizedEnergyMap, 3);
     songData = { duration, energyMap: smoothedEnergyMap };
 
     trackCurve = createTrackPath(smoothedEnergyMap, duration);
@@ -361,6 +395,7 @@ async function analyzeAudioAndGenerateTrack(arrayBuffer: ArrayBuffer) {
 function generateTrackFrames(curve: THREE.CatmullRomCurve3, energyMap: number[], segments: number) {
     const frames = [];
     let lastUp = new THREE.Vector3(0, 1, 0);
+    const INTENSE_ROLL_THRESHOLD = 0.82; // Lowered threshold for more frequent corkscrews
 
     for (let i = 0; i <= segments; i++) {
         const progress = i / segments;
@@ -370,11 +405,15 @@ function generateTrackFrames(curve: THREE.CatmullRomCurve3, energyMap: number[],
         const energyIndex = Math.min(Math.floor(progress * energyMap.length), energyMap.length - 1);
         const energy = energyMap[energyIndex] || 0;
 
-        const turnInfluence = Math.sin(progress * energyMap.length * 0.15);
+        // Use a low-frequency sine wave for long, majestic rolls.
+        const turnInfluence = Math.sin(progress * energyMap.length * 0.08);
 
         let rollDelta = 0;
-        if (energy > 0.4) {
-            rollDelta = turnInfluence * (energy - 0.4) * -0.35; // The roll factor
+        // Only apply roll on very high energy parts to make it a special event
+        if (energy > INTENSE_ROLL_THRESHOLD) {
+            // The amount of roll increases as energy goes from threshold to 1.0
+            const rollIntensity = (energy - INTENSE_ROLL_THRESHOLD) / (1.0 - INTENSE_ROLL_THRESHOLD);
+            rollDelta = turnInfluence * rollIntensity * -1.5; // Tunable: -1.5 is the max roll factor
         }
 
         const normal = lastUp.clone();
@@ -392,35 +431,41 @@ function generateTrackFrames(curve: THREE.CatmullRomCurve3, energyMap: number[],
 
 function createTrackPath(energyMap: number[], duration: number): THREE.CatmullRomCurve3 {
     const points: THREE.Vector3[] = [];
-    const totalTrackLength = duration * 150;
-
     let pos = new THREE.Vector3(0, 0, 0);
     let vel = new THREE.Vector3(0, 0, 0);
-
     points.push(pos.clone());
 
-    const turnInfluence = 3.0;
-    const climbInfluence = 2.5;
+    const turnInfluence = 4.0;
+    const climbInfluence = 3.5;
     const damping = 0.96;
     const centeringForce = 0.003;
+    const baseSegmentLengthPerSecond = 150;
+    const timePerSegment = duration / energyMap.length;
 
     for (let i = 0; i < energyMap.length; i++) {
         const energy = energyMap[i];
 
-        const turnForce = Math.sin(i * 0.15) * energy * turnInfluence;
-        const climbForce = (energy - 0.2) * climbInfluence;
+        // Speed multiplier: Slower on calm parts, much faster on intense parts
+        const speedMultiplier = 0.5 + energy * 2.5; // Range from 0.5x to 3.0x
+        const segmentLength = baseSegmentLengthPerSecond * timePerSegment * speedMultiplier;
+
+        // Path variation (turns, climbs) multiplier.
+        // More sensitive to make calm parts straighter.
+        const effectMultiplier = Math.max(0, (energy - 0.3) / 0.6);
+
+        const turnForce = Math.sin(i * 0.15) * energy * turnInfluence * effectMultiplier;
+        const climbForce = (energy - 0.2) * climbInfluence * effectMultiplier;
 
         const centerPullX = -pos.x * centeringForce;
         const centerPullY = -pos.y * centeringForce;
 
         vel.x += turnForce + centerPullX;
         vel.y += climbForce + centerPullY;
-
         vel.multiplyScalar(damping);
 
         pos.x += vel.x;
         pos.y += vel.y;
-        pos.z = -(i / energyMap.length) * totalTrackLength;
+        pos.z -= segmentLength;
 
         points.push(pos.clone());
     }
@@ -502,6 +547,11 @@ function setupAndPlayAudio(arrayBuffer: ArrayBuffer) {
         score = 0;
         playerProgress = 0;
         lastPlayerProgress = 0;
+        lerpedEnergy = 0;
+        lastHyperspaceTriggerTime = -Infinity;
+        hyperspaceJumpCount = 0;
+        timeInRedZone = 0;
+        currentColor.set(0x00bfff);
         scoreEl.textContent = '0';
         gameStarted = true;
     }, (error) => {
@@ -528,8 +578,6 @@ function recycleToPool(block: any) {
 }
 
 function createColorBlock() {
-    // Единая геометрия для всех блоков в виде "бруска мыла".
-    // Задаем фиксированный размер блока, чтобы он не менялся с шириной полосы.
     const blockWidth = 1.5;
     const geometry = new RoundedBoxGeometry(blockWidth, blockWidth, blockWidth * 2, 6, 0.5);
     const material = new THREE.MeshStandardMaterial({ emissiveIntensity: 0.4 });
@@ -537,11 +585,16 @@ function createColorBlock() {
 }
 
 function createGreyBlock() {
-    // Единая геометрия для всех блоков в виде "бруска мыла".
-    // Задаем фиксированный размер блока, чтобы он не менялся с шириной полосы.
     const blockWidth = 1.5;
     const geometry = new RoundedBoxGeometry(blockWidth, blockWidth, blockWidth * 2, 6, 0.5);
-    const material = new THREE.MeshStandardMaterial({ color: 0xdddddd, metalness: 0.1, roughness: 0.8 });
+    // Give grey blocks a subtle emissive property to ensure they are always visible
+    const material = new THREE.MeshStandardMaterial({
+        color: 0x666666, // A mid-grey
+        metalness: 0.2,
+        roughness: 0.7,
+        emissive: 0xbbbbbb, // A light grey emissive color
+        emissiveIntensity: 0.25 // Subtle glow so it doesn't distract
+    });
     return new THREE.Mesh(geometry, material);
 }
 
@@ -554,11 +607,15 @@ function pregenerateBlocks(energyMap: number[]) {
         const energy = energyMap[i];
         const progress = i / energyMap.length;
 
-        const baseSpawnChance = 0.3;
-        if (Math.random() > baseSpawnChance + energy * 0.6) continue;
+        // Spawn chance based on energy. Less blocks on calm parts.
+        const spawnChance = energy * 0.75;
+        if (Math.random() > spawnChance) continue;
 
-        const isObstacleRun = energy > 0.6 && Math.random() < 0.4 && consecutiveObstacles < 2;
-        const isMultiBlock = energy > 0.4 && Math.random() < energy;
+        // Obstacle runs (grey blocks) are for medium-high energy.
+        const isObstacleRun = energy > 0.6 && Math.random() < (energy - 0.6) * 0.7 && consecutiveObstacles < 2;
+        // Multi-blocks (full rows of color) for medium energy and up.
+        const isMultiBlock = energy > 0.4 && Math.random() < (energy - 0.4);
+
 
         if (isObstacleRun) {
             const openLane = Math.floor(Math.random() * NUM_LANES);
@@ -570,7 +627,7 @@ function pregenerateBlocks(energyMap: number[]) {
             consecutiveObstacles++;
         } else if (isMultiBlock) {
             for (let lane = 0; lane < NUM_LANES; lane++) {
-                if (Math.random() > 0.1) {
+                if (Math.random() > 0.15) { // higher chance for multi-blocks
                     allBlocks.push({ progress, lane, type: 'color', mesh: null, collected: false });
                 }
             }
@@ -667,38 +724,55 @@ function checkCollisions() {
     }
 }
 
-function updateSceneColors(energy: number) {
-    const calmColor = new THREE.Color(0x0077ff);    // Vibrant Blue
-    const midColor = new THREE.Color(0xffa500);     // Orange
-    const intenseColor = new THREE.Color(0xdc143c); // Crimson Red
+function getTargetColor(energy: number): THREE.Color {
+    const calmLow = new THREE.Color(0x00bfff);      // blue: DeepSkyBlue
+    const calmHigh = new THREE.Color(0x20c20e);     // green
+    const mediumLow = new THREE.Color(0xffff00);    // yellow
+    const mediumHigh = new THREE.Color(0xff4500);   // orange-red
+    const intenseLow = new THREE.Color(0xff4500);   // orange-red
+    const intenseHigh = new THREE.Color(0xdc143c);  // crimson
 
-    let finalColor = new THREE.Color();
-    if (energy < 0.25) {
-        finalColor.set(0x002266).lerp(calmColor, energy / 0.25);
-    } else if (energy < 0.55) {
-        finalColor.set(calmColor).lerp(midColor, (energy - 0.25) / 0.3);
+    const calmThreshold = 0.3;
+    const mediumThreshold = 0.7; // Raised threshold for yellow/orange
+
+    let targetColor = new THREE.Color();
+
+    if (energy < calmThreshold) {
+        const t = energy / calmThreshold;
+        targetColor.lerpColors(calmLow, calmHigh, t);
+    } else if (energy < mediumThreshold) {
+        const t = (energy - calmThreshold) / (mediumThreshold - calmThreshold);
+        targetColor.lerpColors(mediumLow, mediumHigh, t);
     } else {
-        finalColor.set(midColor).lerp(intenseColor, Math.min((energy - 0.55) / 0.45, 1.0));
+        const t = Math.min(1.0, (energy - mediumThreshold) / (1.0 - mediumThreshold));
+        targetColor.lerpColors(intenseLow, intenseHigh, t);
     }
+    return targetColor;
+}
 
-    (composer.passes[1] as UnrealBloomPass).strength = 0.5 + energy * 0.7;
+function updateSceneColors(targetColor: THREE.Color) {
+    // Lerp the current color towards the target for smooth transitions
+    currentColor.lerp(targetColor, 0.08);
 
-    const lerpFactor = 0.05;
+    (composer.passes[1] as UnrealBloomPass).strength = 0.6 + lerpedEnergy * 1.2;
 
-    if (trackGroup && backgroundTunnel) {
+    if (trackGroup) {
         trackGroup.children.forEach((child: any) => {
-            // This logic specifically targets the rails (which are TubeGeometry with an emissive material property)
-            // to prevent the transparent road surface from being colored. The lane lines will remain white.
             if (child.geometry.type === 'TubeGeometry' && child.material?.emissive) {
-                child.material.color.lerp(finalColor, lerpFactor);
-                child.material.emissive.lerp(finalColor, lerpFactor);
+                child.material.color.copy(currentColor);
+                child.material.emissive.copy(currentColor);
             }
         });
-
-        backgroundTunnel.children.forEach((c: any) => c.material.color.lerp(finalColor, lerpFactor));
     }
-    scene.fog.color.lerp(finalColor, lerpFactor);
+
+    // Update background sphere emissive color for glow effect
+    if (backgroundSphere && (backgroundSphere.material as THREE.MeshStandardMaterial).emissive) {
+        (backgroundSphere.material as THREE.MeshStandardMaterial).emissive.copy(currentColor);
+    }
+
+    scene.fog.color.copy(currentColor);
 }
+
 
 const clock = new THREE.Clock();
 function animate() {
@@ -712,111 +786,171 @@ function animate() {
         const energyIndex = Math.min(Math.floor(playerProgress * songData.energyMap.length), songData.energyMap.length - 1);
         const currentEnergy = songData.energyMap[energyIndex] || 0;
 
+        // Use a lerped energy for smooth color and effect transitions
+        lerpedEnergy = THREE.MathUtils.lerp(lerpedEnergy, currentEnergy, 0.05);
+
         // --- Core track vectors for this frame ---
         const currentFrame = getInterpolatedFrame(playerProgress);
         const { point: currentPoint, tangent, normal: trackNormal, binormal } = currentFrame;
 
-
         // --- Player Logic ---
-        // 1. Determine target lane from keyboard controls
         if (keyState.left) {
-            targetPlayerLane = 0; // Left lane
+            targetPlayerLane = 0;
         } else if (keyState.right) {
-            targetPlayerLane = 2; // Right lane
+            targetPlayerLane = 2;
         } else {
-            targetPlayerLane = 1; // Center lane
+            targetPlayerLane = 1;
         }
-
-        // 2. Smoothly move towards target lane
         actualPlayerLane = THREE.MathUtils.lerp(actualPlayerLane, targetPlayerLane, 0.15);
-
-        // 3. Calculate Player's final position
         const horizontalOffset = binormal.clone().multiplyScalar(THREE.MathUtils.lerp(LANE_POSITIONS[0], LANE_POSITIONS[2], actualPlayerLane / 2));
-        const SHIP_HOVER_HEIGHT = 1.2; // How high the ship floats above the track
+        const SHIP_HOVER_HEIGHT = 1.2;
         const verticalOffset = trackNormal.clone().multiplyScalar(SHIP_HOVER_HEIGHT);
         player.position.copy(currentPoint).add(horizontalOffset).add(verticalOffset);
-
-        // 4. Update player orientation to follow the track
-        const lookAheadProgress = 0.003; // Tunable: how far ahead the ship "looks"
+        const lookAheadProgress = 0.003;
         const futureProgress = Math.min(playerProgress + lookAheadProgress, 1.0);
         const futureFrame = getInterpolatedFrame(futureProgress);
-
         const futureHorizontalOffset = futureFrame.binormal.clone().multiplyScalar(THREE.MathUtils.lerp(LANE_POSITIONS[0], LANE_POSITIONS[2], actualPlayerLane / 2));
         const futureVerticalOffset = futureFrame.normal.clone().multiplyScalar(SHIP_HOVER_HEIGHT);
         const lookAtTargetPoint = futureFrame.point.clone().add(futureHorizontalOffset).add(futureVerticalOffset);
-
         player.up.copy(trackNormal);
         player.lookAt(lookAtTargetPoint);
-        player.rotateY(Math.PI); // Model is facing backwards, so rotate it.
+        player.rotateY(Math.PI);
 
         // --- Camera Logic ---
-        const CAM_HEIGHT = 6.0; // How high the camera is above the track
-        const CAM_DISTANCE_BEHIND = 8.0; // How far behind the player the camera is
-        const LOOK_AHEAD_DISTANCE = 40.0;
-        // 5.1. Calculate ideal camera position (on track's center line, behind the player)
-        // This position is "on the rails".
+        const CAM_HEIGHT = 6.0;
+        const CAM_DISTANCE_BEHIND = 8.0;
         const cameraVerticalOffset = trackNormal.clone().multiplyScalar(CAM_HEIGHT);
         const cameraBehindOffset = tangent.clone().multiplyScalar(-CAM_DISTANCE_BEHIND);
         const idealCameraPos = currentPoint.clone().add(cameraVerticalOffset).add(cameraBehindOffset);
-
-        // 5.2. Move camera smoothly but very quickly to the ideal position.
-        // A high, frame-rate independent lerp factor makes it feel locked to the track.
-        const cameraLerpFactor = 1.0 - Math.pow(1, deltaTime); // Converges extremely fast
         camera.position.lerp(idealCameraPos, 1.0);
-
-        // 5.3. Point camera
-        // The camera's "up" vector must match the track's current roll orientation.
         camera.up.copy(trackNormal);
-        // Look directly at the player's ship. This ensures the ship is always
-        // the center of focus and the camera follows its lane changes perfectly.
+        const LOOK_AHEAD_DISTANCE = 40.0;
         const cameraLookAtTarget = currentPoint.clone().add(tangent.clone().multiplyScalar(LOOK_AHEAD_DISTANCE));
-
-        // 5.4. Point camera
         camera.lookAt(cameraLookAtTarget);
 
-        // 5.4. Camera Shake Effect
-        if (shakeTime > 0) {
-            // Apply shake in camera's local space for a natural feel during rolls
-            const shakeVector = new THREE.Vector3(
-              (Math.random() - 0.5) * shakeIntensity,
-              (Math.random() - 0.5) * shakeIntensity,
-              0 // No shake along the forward/backward axis
-            ).applyQuaternion(camera.quaternion);
-            camera.position.add(shakeVector);
+        // --- Effects and Visuals ---
 
+        // HYPERSPACE LOGIC: Reactive trigger based on sustained time in a high-energy zone.
+        const HYPERSPACE_THRESHOLD = 0.70;
+        const HYPERSPACE_COOLDOWN = 40;
+        const TIME_IN_RED_ZONE_TO_TRIGGER = 0.25;
+
+        if (currentEnergy >= HYPERSPACE_THRESHOLD) {
+            timeInRedZone += deltaTime;
+        } else {
+            timeInRedZone = 0;
+        }
+
+        // Check for trigger condition
+        if (
+          timeInRedZone >= TIME_IN_RED_ZONE_TO_TRIGGER &&
+          !hyperspaceEffect.active &&
+          audioContext.currentTime > lastHyperspaceTriggerTime + HYPERSPACE_COOLDOWN &&
+          hyperspaceJumpCount < MAX_HYPERSPACE_JUMPS
+        ) {
+            hyperspaceEffect.active = true;
+            hyperspaceEffect.timer = hyperspaceEffect.duration;
+            lastHyperspaceTriggerTime = audioContext.currentTime;
+            hyperspaceJumpCount++;
+            timeInRedZone = 0;
+        }
+
+        // Dynamic FOV and Hyperspace Update
+        let baseFov = 75 + currentEnergy * 20;
+        const normalStarfieldMat = normalStarfield.material as THREE.PointsMaterial;
+        const streaksMat = hyperspaceStreaks.material as THREE.LineBasicMaterial;
+        const defaultStarOpacity = 0.7;
+
+        if (hyperspaceEffect.active && hyperspaceEffect.timer > 0) {
+            hyperspaceEffect.timer -= deltaTime;
+
+            // t is the overall progress of the effect, from 0 to 1
+            const t = 1.0 - (hyperspaceEffect.timer / hyperspaceEffect.duration);
+            // effectProgress uses a sine curve to smoothly go from 0 -> 1 -> 0
+            const effectProgress = Math.sin(t * Math.PI);
+
+            baseFov += effectProgress * 80;
+
+            // --- Crossfade Opacity ---
+            normalStarfieldMat.opacity = defaultStarOpacity * (1.0 - effectProgress);
+            streaksMat.opacity = effectProgress;
+            hyperspaceStreaks.visible = streaksMat.opacity > 0;
+
+            // --- Star Stretching ---
+            const streakPositions = (hyperspaceStreaks.geometry.attributes.position as THREE.BufferAttribute).array as Float32Array;
+            const stretchLength = effectProgress * 350; // Max length of the streak
+
+            for (let i = 0; i < STAR_COUNT; i++) {
+                const i3 = i * 3; // Index for original star position
+                const i6 = i * 6; // Index for line segment (2 vertices)
+
+                const headX = STAR_POSITIONS[i3 + 0];
+                const headY = STAR_POSITIONS[i3 + 1];
+                const headZ = STAR_POSITIONS[i3 + 2];
+
+                // Set the start point of the line (head)
+                streakPositions[i6 + 0] = headX;
+                streakPositions[i6 + 1] = headY;
+                streakPositions[i6 + 2] = headZ;
+
+                // Set the end point of the line (tail) by stretching it along Z
+                streakPositions[i6 + 3] = headX;
+                streakPositions[i6 + 4] = headY;
+                streakPositions[i6 + 5] = headZ - stretchLength;
+            }
+            hyperspaceStreaks.geometry.attributes.position.needsUpdate = true;
+
+            if (hyperspaceEffect.timer <= 0) {
+                hyperspaceEffect.active = false;
+            }
+        } else {
+            // Smoothly transition back to normal state
+            normalStarfieldMat.opacity = THREE.MathUtils.lerp(normalStarfieldMat.opacity, defaultStarOpacity, 0.1);
+            streaksMat.opacity = THREE.MathUtils.lerp(streaksMat.opacity, 0, 0.1);
+            if (streaksMat.opacity < 0.01) {
+                hyperspaceStreaks.visible = false;
+            }
+        }
+
+        camera.fov = baseFov;
+        camera.updateProjectionMatrix();
+
+        // Camera Shake Effect
+        if (shakeTime > 0) {
+            const shakeVector = new THREE.Vector3((Math.random() - 0.5) * shakeIntensity, (Math.random() - 0.5) * shakeIntensity, 0).applyQuaternion(camera.quaternion);
+            camera.position.add(shakeVector);
             shakeTime -= deltaTime;
         } else {
             shakeIntensity = 0;
         }
-
-        // DYNAMIC FOV for speed effect
-        camera.fov = 75 + currentEnergy * 25;
-        camera.updateProjectionMatrix();
 
         // Update other scene elements
         analyser.getByteFrequencyData(frequencyData);
         const bass = (frequencyData[1] + frequencyData[2]) / 2 / 255;
         trackGroup.children.forEach((c: any) => { if(c.material?.emissive) c.material.emissiveIntensity = 0.6 + bass * 1.2;});
 
-        backgroundTunnel.rotation.z += (0.001 + bass * 0.005);
+        if (backgroundSphere) {
+            (backgroundSphere.material as THREE.MeshStandardMaterial).emissiveIntensity = 0.2 + bass * 1.5;
+        }
+
         nebulaParticles.position.z = camera.position.z - 300;
-        starBursts.position.z = camera.position.z - 500;
+        normalStarfield.position.z = camera.position.z;
+        hyperspaceStreaks.position.z = camera.position.z;
         meteorShower.position.z = camera.position.z - 500;
 
-        // Update high-energy FX
-        (starBursts.material as THREE.PointsMaterial).opacity = THREE.MathUtils.lerp((starBursts.material as THREE.PointsMaterial).opacity, currentEnergy > 0.6 ? (currentEnergy-0.6)*2 : 0, 0.1);
-        meteorShower.visible = currentEnergy > 0.75;
+        // Intense red zone visual effects
+        const redZoneEnergy = Math.max(0, (currentEnergy - 0.75) / 0.25);
+        meteorShower.visible = redZoneEnergy > 0;
         if(meteorShower.visible) {
-            meteorShower.material.opacity = Math.min((currentEnergy - 0.75)*4, 1.0);
+            meteorShower.material.opacity = redZoneEnergy;
             const positions = meteorShower.geometry.attributes.position.array;
             for(let i=0; i < positions.length/3; i++){
-                positions[i*3+1] -= (10 + currentEnergy * 20) * deltaTime; // Move down
-                if(positions[i*3+1] < -200) positions[i*3+1] = 200; // Reset
+                positions[i*3+1] -= (10 + currentEnergy * 20) * deltaTime;
+                if(positions[i*3+1] < -200) positions[i*3+1] = 200;
             }
             meteorShower.geometry.attributes.position.needsUpdate = true;
         }
 
-        // Update positive burst effect
         if(positiveBurst.visible) {
             const positions = positiveBurst.geometry.attributes.position.array;
             for(let i=0; i<positiveBurst.userData.velocities.length; i++) {
@@ -831,18 +965,21 @@ function animate() {
 
         for (const block of allBlocks) {
             if (block.mesh && block.type === 'color') {
-                const h = 0.6 - (currentEnergy * 0.6); // cyan to red
-                (block.mesh.material as THREE.MeshStandardMaterial).color.setHSL(h, 1, 0.4);
-                (block.mesh.material as THREE.MeshStandardMaterial).emissive.setHSL(h, 1, 0.15);
+                // Use the main scene color for blocks for consistency
+                (block.mesh.material as THREE.MeshStandardMaterial).color.copy(currentColor).multiplyScalar(0.8);
+                (block.mesh.material as THREE.MeshStandardMaterial).emissive.copy(currentColor).multiplyScalar(0.3);
             }
         }
 
-        updateSceneColors(currentEnergy);
+        updateSceneColors(getTargetColor(lerpedEnergy));
         updateBlocks();
         checkCollisions();
     } else {
-        backgroundTunnel.children[0].rotation.z += 0.0005;
-        backgroundTunnel.children[1].rotation.z -= 0.0003;
+        if (backgroundSphere) {
+            const time = clock.getElapsedTime();
+            (backgroundSphere.material as THREE.MeshStandardMaterial).emissiveIntensity = 0.2 + (Math.sin(time * 0.5) * 0.5 + 0.5) * 0.2; // Gentle pulse
+            backgroundSphere.rotation.y += 0.0005;
+        }
     }
     composer.render();
 }

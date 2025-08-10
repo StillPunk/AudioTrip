@@ -396,6 +396,8 @@ function generateTrackFrames(curve: THREE.CatmullRomCurve3, energyMap: number[],
     const frames = [];
     let lastUp = new THREE.Vector3(0, 1, 0);
     const INTENSE_ROLL_THRESHOLD = 0.82; // Lowered threshold for more frequent corkscrews
+    const HILL_FREQUENCY = 0.4; // Controls how close the hills are. Lower is wider.
+    const HILL_AMPLITUDE = 2.5; // Controls the max height of hills.
 
     for (let i = 0; i <= segments; i++) {
         const progress = i / segments;
@@ -404,6 +406,16 @@ function generateTrackFrames(curve: THREE.CatmullRomCurve3, energyMap: number[],
 
         const energyIndex = Math.min(Math.floor(progress * energyMap.length), energyMap.length - 1);
         const energy = energyMap[energyIndex] || 0;
+
+        // --- HILL GENERATION ---
+        // We need a stable "up" vector before applying roll.
+        const preRollNormal = lastUp.clone();
+        preRollNormal.projectOnPlane(tangent).normalize();
+
+        // Calculate hill height based on a sine wave and music energy.
+        const hillOffset = Math.sin(i * HILL_FREQUENCY) * energy * HILL_AMPLITUDE;
+        point.add(preRollNormal.clone().multiplyScalar(hillOffset));
+        // --- END HILL GENERATION ---
 
         // Use a low-frequency sine wave for long, majestic rolls.
         const turnInfluence = Math.sin(progress * energyMap.length * 0.08);

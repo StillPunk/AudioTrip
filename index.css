@@ -70,9 +70,9 @@ p {
 }
 
 #analysis-text {
-    color: #0ff;
-    font-size: 1.5em;
-    text-shadow: 0 0 8px #0ff;
+  color: #0ff;
+  font-size: 1.5em;
+  text-shadow: 0 0 8px #0ff;
 }
 
 /* Custom File Input */
@@ -119,9 +119,9 @@ input[type="file"] {
 }
 
 #end-screen button {
-   border-color: #f0f;
-   color: #f0f;
-   text-shadow: 0 0 5px #f0f;
+  border-color: #f0f;
+  color: #f0f;
+  text-shadow: 0 0 5px #f0f;
 }
 
 #end-screen button:hover {

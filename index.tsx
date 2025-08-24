@@ -104,6 +104,34 @@ async function loadPlayerModel(): Promise<THREE.Group> {
     });
 }
 
+function handleTouchStart(event: TouchEvent) {
+    // Предотвращаем стандартное поведение браузера (например, прокрутку страницы)
+    event.preventDefault();
+
+    // Получаем X-координату первого касания
+    const touchX = event.touches[0].clientX;
+    // Находим середину экрана
+    const screenMidpoint = window.innerWidth / 2;
+
+    if (touchX < screenMidpoint) {
+        // Если касание в левой половине, имитируем нажатие "влево"
+        keyState.left = true;
+        keyState.right = false; // Убедимся, что правая кнопка "отпущена"
+    } else {
+        // Если касание в правой половине, имитируем нажатие "вправо"
+        keyState.right = true;
+        keyState.left = false; // Убедимся, что левая кнопка "отпущена"
+    }
+}
+
+function handleTouchEnd(event: TouchEvent) {
+    // Предотвращаем стандартное поведение
+    event.preventDefault();
+
+    // Когда пользователь убирает палец, "отпускаем" обе кнопки
+    keyState.left = false;
+    keyState.right = false;
+}
 
 async function init() {
     // Update UI for loading
@@ -173,6 +201,11 @@ async function init() {
     window.addEventListener('resize', onWindowResize);
     document.addEventListener('keydown', onKeyDown);
     document.addEventListener('keyup', onKeyUp);
+
+    canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
+    canvas.addEventListener('touchend', handleTouchEnd, { passive: false });
+    canvas.addEventListener('touchcancel', handleTouchEnd, { passive: false });
+
     fileInput.addEventListener('change', onFileSelect);
     restartButton.addEventListener('click', () => location.reload());
 
@@ -833,7 +866,7 @@ function animate() {
 
         // --- Camera Logic ---
         const CAM_HEIGHT = 6.0;
-        const CAM_DISTANCE_BEHIND = 8.0;
+        const CAM_DISTANCE_BEHIND = 10.0;
         const cameraVerticalOffset = trackNormal.clone().multiplyScalar(CAM_HEIGHT);
         const cameraBehindOffset = tangent.clone().multiplyScalar(-CAM_DISTANCE_BEHIND);
         const idealCameraPos = currentPoint.clone().add(cameraVerticalOffset).add(cameraBehindOffset);

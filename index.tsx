@@ -312,7 +312,7 @@ function createMeteorShower() {
     }
     geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
     const mat = new THREE.PointsMaterial({
-        color: 0xffffff, size: 30, blending: THREE.AdditiveBlending, transparent: true, opacity: 0, map: new THREE.TextureLoader().load('https://threejs.org/examples/textures/sprites/rain.png')
+        color: 0xffffff, size: 30, blending: THREE.AdditiveBlending, transparent: true, opacity: 0, map: new THREE.TextureLoader().load('https://threejs.org/examples/textures/sprites/disc.png')
     });
     const shower = new THREE.Points(geo, mat);
     shower.visible = false;
@@ -890,7 +890,7 @@ function animate() {
 
             // --- Star Stretching ---
             const streakPositions = (hyperspaceStreaks.geometry.attributes.position as THREE.BufferAttribute).array as Float32Array;
-            const stretchLength = effectProgress * 350; // Max length of the streak
+            const stretchLength = effectProgress * 500; // Max length of the streak
 
             for (let i = 0; i < STAR_COUNT; i++) {
                 const i3 = i * 3; // Index for original star position

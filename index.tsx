@@ -496,64 +496,60 @@ function generateLightningGeometry(startPoint: THREE.Vector3, endPoint: THREE.Ve
   return new THREE.Float32BufferAttribute(new THREE.BufferGeometry().setFromPoints(points).getAttribute('position').array, 3);
 }
 
-function triggerLightning() {
+function triggerLightning(frame: { point: THREE.Vector3, tangent: THREE.Vector3, normal: THREE.Vector3, binormal: THREE.Vector3 }) {
   if (!storm.lightningFlash || !storm.ambientLight) return;
 
-  // 1. Позиция вспышки: делаем ее ближе к центру обзора и не так далеко
-  const flashPosition = new THREE.Vector3(
-    (Math.random() - 0.5) * 500, // Было: 800 (сузили коридор)
-    200 + Math.random() * 250,
-    camera.position.z - 400 - Math.random() * 300 // Было: 500-1000 (приблизили)
-  );
+  // Получаем векторы из текущего кадра трассы
+  const { point: currentPoint, normal: trackNormal, binormal, tangent } = frame;
+
+  // 1. Позиция вспышки: генерируем ее "НАД" игроком, используя trackNormal как "верх"
+  const flashPosition = currentPoint.clone()
+    .add(trackNormal.clone().multiplyScalar(200 + Math.random() * 250)) // 200-450 единиц "вверх" от трассы
+    .add(binormal.clone().multiplyScalar((Math.random() - 0.5) * 500));  // Случайно влево/вправо от трассы
+
   storm.lightningFlash.position.copy(flashPosition);
 
-  // 2. Вспышка света: делаем ее НАМНОГО ярче
-  storm.lightningFlash.intensity = 100 + Math.random() * 50; // Было: 30-50
-  storm.ambientLight.intensity = 0.5 + Math.random() * 0.3; // И включаем глобальную вспышку
+  // 2. Вспышка света (без изменений)
+  storm.lightningFlash.intensity = 100 + Math.random() * 50;
+  storm.ambientLight.intensity = 0.5 + Math.random() * 0.3;
 
-  // 3. Создаем не один, а ЦЕЛЫЙ ПУЧОК молний (от 2 до 4)
+  // 3. Создаем пучок молний, которые теперь тоже ориентированы правильно
   const boltsToCreate = 2 + Math.floor(Math.random() * 3);
   for (let i = 0; i < boltsToCreate; i++) {
     const bolt = lightningBolts.find(b => !b.userData.isActive);
     if (bolt) {
       const startPoint = flashPosition.clone();
-
-      // Молнии могут быть "облако-земля" или "облако-облако" для разнообразия
       let endPoint;
+
       if (Math.random() > 0.3) {
-        // Ударяет в "горизонт"
-        endPoint = new THREE.Vector3(
-          startPoint.x + (Math.random() - 0.5) * 400,
-          10,
-          startPoint.z + (Math.random() - 0.5) * 400
-        );
+        // "Облако-земля": молния бьет в точку ВПЕРЕДИ игрока, рядом с трассой
+        endPoint = currentPoint.clone()
+          .add(tangent.clone().multiplyScalar(100 + Math.random() * 200)) // 100-300 единиц вперед по трассе
+          .add(binormal.clone().multiplyScalar((Math.random() - 0.5) * 400)) // Слева/справа от трассы
+          .add(trackNormal.clone().multiplyScalar(10)); // Чуть выше поверхности трассы
       } else {
-        // Перекидывается на другую точку в небе
-        endPoint = new THREE.Vector3(
-          startPoint.x + (Math.random() - 0.5) * 600,
-          startPoint.y + (Math.random() - 0.5) * 200,
-          startPoint.z + (Math.random() - 0.5) * 300
-        );
+        // "Облако-облако": перекидывается на другую точку "в небе"
+        endPoint = startPoint.clone()
+          .add(trackNormal.clone().multiplyScalar((Math.random() - 0.5) * 200)) // Смещаем по "вертикали"
+          .add(binormal.clone().multiplyScalar((Math.random() - 0.5) * 600)); // Смещаем по "горизонтали"
       }
 
       bolt.geometry.setAttribute('position', generateLightningGeometry(startPoint, endPoint));
       bolt.geometry.computeBoundingSphere();
-
-      // Делаем молнии видимыми дольше
       bolt.material.opacity = 1.0;
       bolt.userData.isActive = true;
-      bolt.userData.life = 0.8 + Math.random() * 0.4; // Было: 0.5
+      bolt.userData.life = 0.8 + Math.random() * 0.4;
       bolt.visible = true;
     }
   }
 
-  // 4. Звук грома
+  // 4. Звук грома (без изменений)
   setTimeout(() => {
     if (storm.thunderSounds.length > 0 && storm.active) {
       const sound = storm.thunderSounds[Math.floor(Math.random() * storm.thunderSounds.length)];
       sound.play();
     }
-  }, 100 + Math.random() * 200); // Уменьшили задержку для большего хаоса
+  }, 100 + Math.random() * 200);
 }
 
 async function onFileSelect(event: Event) {
@@ -749,6 +745,18 @@ function createTrackMesh(frames: any[]) {
   const railMat = new THREE.MeshStandardMaterial({emissiveIntensity: 1.0, side: THREE.DoubleSide});
   const lineMat = new THREE.MeshBasicMaterial({color: 0xffffff, side: THREE.DoubleSide});
 
+  const leftRail = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(leftRailPoints), segments, 0.2, 8, false), railMat.clone());
+  leftRail.name = 'leftRail';
+  leftRail.userData.originalVertices = leftRail.geometry.attributes.position.clone();
+  leftRail.userData.isDeformed = false;
+  group.add(leftRail);
+
+  const rightRail = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(rightRailPoints), segments, 0.2, 8, false), railMat.clone());
+  rightRail.name = 'rightRail';
+  rightRail.userData.originalVertices = rightRail.geometry.attributes.position.clone();
+  rightRail.userData.isDeformed = false;
+  group.add(rightRail);
+
   group.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(leftRailPoints), segments, 0.2, 8, false), railMat.clone()));
   group.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(rightRailPoints), segments, 0.2, 8, false), railMat.clone()));
   group.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(leftLinePoints), segments, 0.05, 8, false), lineMat.clone()));
@@ -776,6 +784,45 @@ function createTrackMesh(frames: any[]) {
   group.add(new THREE.Mesh(roadGeo, roadMat));
 
   return group;
+}
+
+function updateRailEqualizer(rail: THREE.Mesh, frequencyData: Uint8Array) {
+  if (!rail || !rail.userData.originalVertices) return;
+
+  const originalPositions = rail.userData.originalVertices;
+  const currentPositions = rail.geometry.attributes.position;
+  const normals = rail.geometry.attributes.normal;
+  const vertexCount = originalPositions.count;
+
+  const EQUALIZER_INTENSITY = 0.5; // <<< МОЖЕТЕ НАСТРОИТЬ СИЛУ ЭФФЕКТА ЗДЕСЬ
+
+  for (let i = 0; i < vertexCount; i++) {
+    // Получаем значение из аудиоданных (используем % для зацикливания паттерна)
+    const freqIndex = i % frequencyData.length;
+    const freqValue = frequencyData[freqIndex] / 255.0; // Нормализуем до 0-1
+
+    // Получаем исходную позицию и нормаль вершины
+    const ox = originalPositions.getX(i);
+    const oy = originalPositions.getY(i);
+    const oz = originalPositions.getZ(i);
+
+    const nx = normals.getX(i);
+    const ny = normals.getY(i);
+    const nz = normals.getZ(i);
+
+    // Смещаем вершину вдоль ее нормали на величину, зависящую от частоты
+    const displacement = freqValue * EQUALIZER_INTENSITY;
+    currentPositions.setXYZ(
+      i,
+      ox + nx * displacement,
+      oy + ny * displacement,
+      oz + nz * displacement
+    );
+  }
+
+  // ОЧЕНЬ ВАЖНО: говорим Three.js, что вершины изменились
+  currentPositions.needsUpdate = true;
+  rail.userData.isDeformed = true;
 }
 
 function setupAndPlayAudio(arrayBuffer: ArrayBuffer) {
@@ -1212,7 +1259,7 @@ function animate() {
 
       const currentTime = audioContext.currentTime;
       if (currentTime > storm.lastFlashTime + storm.nextFlashDelay) {
-        triggerLightning();
+        triggerLightning(currentFrame);
         storm.lastFlashTime = currentTime;
         storm.nextFlashDelay = 0.1 + Math.random() * 0.4;
       }
@@ -1244,6 +1291,28 @@ function animate() {
       (backgroundSphere.material as THREE.MeshStandardMaterial).emissiveIntensity = gridIntensity;
     }
     scene.fog.color.copy(currentSkyColor);
+
+    if (trackGroup) {
+      const leftRail = trackGroup.getObjectByName('leftRail') as THREE.Mesh;
+      const rightRail = trackGroup.getObjectByName('rightRail') as THREE.Mesh;
+
+      if (storm.active && leftRail && rightRail) {
+        // Если шторм активен, применяем деформацию эквалайзера
+        updateRailEqualizer(leftRail, frequencyData);
+        updateRailEqualizer(rightRail, frequencyData);
+      } else if (leftRail && rightRail && (leftRail.userData.isDeformed || rightRail.userData.isDeformed)) {
+        // Если шторм неактивен, но рейлинги все еще деформированы,
+        // возвращаем их в исходное состояние.
+        leftRail.geometry.attributes.position.copy(leftRail.userData.originalVertices);
+        rightRail.geometry.attributes.position.copy(rightRail.userData.originalVertices);
+
+        leftRail.geometry.attributes.position.needsUpdate = true;
+        rightRail.geometry.attributes.position.needsUpdate = true;
+
+        leftRail.userData.isDeformed = false;
+        rightRail.userData.isDeformed = false;
+      }
+    }
 
     // HYPERSPACE LOGIC: Reactive trigger based on sustained time in a high-energy zone.
     const HYPERSPACE_THRESHOLD = 0.70;

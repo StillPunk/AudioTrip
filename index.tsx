@@ -155,7 +155,7 @@ async function init() {
     scene.add(hyperspaceStreaks);
 
     meteorShower = createMeteorShower();
-    scene.add(meteorShower);
+    // scene.add(meteorShower);
 
     positiveBurst = createPositiveBurst();
     scene.add(positiveBurst);
@@ -694,6 +694,8 @@ function updateBlocks() {
     const activationZone = playerProgress + BLOCK_VIEW_DISTANCE;
     const deactivationZone = playerProgress - 0.02;
 
+    const rotationMatrix = new THREE.Matrix4();
+
     for (const block of allBlocks) {
         if (block.collected) continue;
         if (!block.mesh && block.progress > playerProgress && block.progress < activationZone) {
@@ -703,13 +705,14 @@ function updateBlocks() {
         if (!block.mesh) continue;
 
         const frame = getInterpolatedFrame(block.progress);
+
         const point = frame.point.clone();
-        point.add(frame.binormal.multiplyScalar(LANE_POSITIONS[block.lane]));
+        point.add(frame.binormal.clone().multiplyScalar(LANE_POSITIONS[block.lane]));
         block.mesh.position.copy(point);
 
-        const lookAtPoint = getInterpolatedFrame(Math.min(block.progress + 0.005, 1)).point;
-        block.mesh.up.copy(frame.normal);
-        block.mesh.lookAt(lookAtPoint);
+        rotationMatrix.makeBasis(frame.tangent, frame.normal, frame.binormal);
+
+        block.mesh.quaternion.setFromRotationMatrix(rotationMatrix);
     }
 }
 
@@ -813,7 +816,7 @@ function animate() {
         } else {
             targetPlayerLane = 1;
         }
-        actualPlayerLane = THREE.MathUtils.lerp(actualPlayerLane, targetPlayerLane, 0.15);
+        actualPlayerLane = THREE.MathUtils.lerp(actualPlayerLane, targetPlayerLane, 0.35);
         const horizontalOffset = binormal.clone().multiplyScalar(THREE.MathUtils.lerp(LANE_POSITIONS[0], LANE_POSITIONS[2], actualPlayerLane / 2));
         const SHIP_HOVER_HEIGHT = 1.2;
         const verticalOffset = trackNormal.clone().multiplyScalar(SHIP_HOVER_HEIGHT);

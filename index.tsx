@@ -65,6 +65,7 @@ let gameStarted = false;
 let isPaused = false;
 let consecutiveHits = 0;
 let currentRankIndex = -1;
+let previousRankIndex = -1;
 let targetPlayerLane = 1; // The lane the player is moving towards
 let actualPlayerLane = 1; // The player's current physical lane (can be fractional)
 const keyState = {left: false, right: false}; // Keyboard state for controls
@@ -660,6 +661,7 @@ function setupAndPlayAudio(arrayBuffer: ArrayBuffer) {
     score = 0;
     consecutiveHits = 0;
     currentRankIndex = -1;
+    previousRankIndex = -1;
     updateStyleUI();
     playerProgress = 0;
     lastPlayerProgress = 0;
@@ -881,9 +883,13 @@ function checkCollisions() {
 }
 
 function updateStyleUI() {
+  const rankChanged = currentRankIndex !== previousRankIndex;
+
   if (currentRankIndex === -1) {
     styleRankContainer.classList.add('hidden');
     scoreMultiplierEl.textContent = '(x1)';
+    styleRankContainer.classList.remove('style-rank-blue', 'style-rank-gold');
+    previousRankIndex = currentRankIndex;
     return;
   }
 
@@ -905,6 +911,13 @@ function updateStyleUI() {
   scoreMultiplierEl.textContent = `(x${currentRank.multiplier})`;
   rankImage.src = currentRank.image;
 
+  if (rankChanged) {
+    rankImage.classList.remove('rank-stamp-animation');
+    setTimeout(() => {
+      rankImage.classList.add('rank-stamp-animation');
+    }, 10);
+  }
+
   const isMaxRank = currentRankIndex === STYLE_RANKS.length - 1;
   if (isMaxRank) {
     progressBarFill.style.width = '100%';
@@ -915,6 +928,8 @@ function updateStyleUI() {
     const progress = (consecutiveHits - currentRank.hitsNeeded) / (hitsForNextRank - currentRank.hitsNeeded);
     progressBarFill.style.width = `${Math.min(progress, 1) * 100}%`;
   }
+
+  previousRankIndex = currentRankIndex;
 }
 
 function getTargetColor(energy: number): THREE.Color {

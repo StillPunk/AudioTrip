@@ -24,7 +24,7 @@
     <h1>AudioSurf</h1>
     <p id="start-prompt">Choose a song to start your ride</p>
     <label for="audio-file-input" class="file-label" id="file-label">Select Audio File</label>
-    <input type="file" id="audio-file-input" accept="audio/*"/>
+    <input type="file" id="audio-file-input" accept="*"/>
   </div>
 
   <div id="loading-screen" class="hidden">
@@ -32,8 +32,17 @@
     <p id="analysis-text" class="hidden">Analyzing your ride...</p>
   </div>
 
-  <div id="score-container" class="hidden">
-    Score: <span id="score">0</span>
+  <div id="game-hud" class="hidden">
+    <div id="score-container">
+      Score: <span id="score">0</span>
+    </div>
+    <button id="pause-button">⏸</button>
+  </div>
+
+  <div id="pause-menu" class="hidden">
+    <h1>Paused</h1>
+    <button id="resume-button">Resume</button>
+    <button id="main-menu-button">Main Menu</button>
   </div>
 
   <div id="end-screen" class="hidden">

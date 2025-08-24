@@ -6,7 +6,6 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 
-
 // --- DOM Elements ---
 const canvas = document.getElementById('webgl-canvas') as HTMLCanvasElement;
 const fileInput = document.getElementById('audio-file-input') as HTMLInputElement;
@@ -81,6 +80,21 @@ let hyperspaceJumpCount = 0;
 // --- Camera Shake & Effects ---
 let shakeTime = 0;
 let shakeIntensity = 0;
+
+let storm = {
+  active: false,
+  lightningFlash: null as THREE.PointLight | null,
+  ambientLight: null as THREE.AmbientLight | null,
+  lastFlashTime: 0,
+  nextFlashDelay: 0,
+  thunderSounds: [] as HTMLAudioElement[]
+};
+let lightningBolts: any[] = [];
+const MAX_BOLTS_IN_POOL = 50; // Пул объектов для молний, чтобы не создавать их на лету
+
+const NORMAL_SKY_COLOR = new THREE.Color(0x00aaff); // Базовый цвет туманностей/фона
+const SSS_SKY_COLOR = new THREE.Color(0x5c001f); // Темно-бордовый для SSS ранга
+let currentSkyColor = NORMAL_SKY_COLOR.clone();
 
 // --- Game Constants ---
 const MAX_HYPERSPACE_JUMPS = 5;
@@ -214,6 +228,7 @@ async function init() {
   // Continue with the rest of the scene
   backgroundSphere = createBackgroundSphere();
   scene.add(backgroundSphere);
+  backgroundSphere.visible = true;
 
   nebulaParticles = createNebulas();
   scene.add(nebulaParticles);
@@ -235,6 +250,26 @@ async function init() {
   bloomPass.threshold = 0.25;
   bloomPass.strength = 1.0;
   bloomPass.radius = 0.5;
+
+  storm.lightningFlash = new THREE.PointLight(0xaaccee, 0, 0, 2);
+  scene.add(storm.lightningFlash);
+
+  storm.ambientLight = new THREE.AmbientLight(0x99aaff, 0);
+  scene.add(storm.ambientLight);
+
+  for (let i = 0; i < MAX_BOLTS_IN_POOL; i++) {
+    lightningBolts.push(createLightningBolt());
+  }
+
+  ['assets/sounds/thunder1.mp3', 'assets/sounds/thunder2.mp3', 'assets/sounds/thunder3.mp3'].forEach(soundFile => {
+    try {
+      const audio = new Audio(soundFile);
+      audio.volume = 0.6
+      storm.thunderSounds.push(audio);
+    } catch (e) {
+      console.warn(`Could not load thunder sound: ${soundFile}`);
+    }
+  });
 
   composer = new EffectComposer(renderer);
   composer.addPass(renderScene);
@@ -276,7 +311,7 @@ function onKeyUp(event: KeyboardEvent) {
 function createBackgroundSphere() {
   const geo = new THREE.SphereGeometry(800, 64, 32);
   const mat = new THREE.MeshStandardMaterial({
-    emissive: 0x00aaff,
+    emissive: 0x00bfff,
     emissiveIntensity: 0.2,
     side: THREE.BackSide,
     fog: false,
@@ -285,7 +320,7 @@ function createBackgroundSphere() {
     transparent: true,
   });
   const sphere = new THREE.Mesh(geo, mat);
-  sphere.position.set(450, 200, -1500); // Positioned to be visible from the track
+  sphere.position.set(450, 200, -1500);
   return sphere;
 }
 
@@ -415,6 +450,110 @@ function createMeteorShower() {
   const shower = new THREE.Points(geo, mat);
   shower.visible = false;
   return shower;
+}
+
+function createLightningBolt() {
+  const geometry = new THREE.BufferGeometry();
+  const material = new THREE.LineBasicMaterial({
+    color: 0xaaccee,
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    fog: false,
+    depthTest: false,
+    opacity: 1.0
+  });
+  const bolt = new THREE.Line(geometry, material);
+  bolt.userData = {
+    isActive: false,
+    life: 0
+  };
+  bolt.visible = false;
+  scene.add(bolt);
+  return bolt;
+}
+
+function generateLightningGeometry(startPoint: THREE.Vector3, endPoint: THREE.Vector3) {
+  let points = [startPoint.clone()];
+  let currentPoint = startPoint.clone();
+  const direction = endPoint.clone().sub(startPoint).normalize();
+  const totalDistance = startPoint.distanceTo(endPoint);
+  let distanceTraveled = 0;
+
+  while (distanceTraveled < totalDistance) {
+    // Увеличиваем длину сегментов и случайное отклонение для более "жирных" молний
+    const segmentLength = 20 + Math.random() * 40; // Было: 10 + Math.random() * 20
+    currentPoint.add(direction.clone().multiplyScalar(segmentLength));
+
+    const randomOffset = new THREE.Vector3(
+      (Math.random() - 0.5) * 50, // Было: 20
+      (Math.random() - 0.5) * 50, // Было: 20
+      (Math.random() - 0.5) * 50  // Было: 20
+    );
+    points.push(currentPoint.clone().add(randomOffset));
+    distanceTraveled += segmentLength;
+  }
+  points.push(endPoint.clone());
+  return new THREE.Float32BufferAttribute(new THREE.BufferGeometry().setFromPoints(points).getAttribute('position').array, 3);
+}
+
+function triggerLightning() {
+  if (!storm.lightningFlash || !storm.ambientLight) return;
+
+  // 1. Позиция вспышки: делаем ее ближе к центру обзора и не так далеко
+  const flashPosition = new THREE.Vector3(
+    (Math.random() - 0.5) * 500, // Было: 800 (сузили коридор)
+    200 + Math.random() * 250,
+    camera.position.z - 400 - Math.random() * 300 // Было: 500-1000 (приблизили)
+  );
+  storm.lightningFlash.position.copy(flashPosition);
+
+  // 2. Вспышка света: делаем ее НАМНОГО ярче
+  storm.lightningFlash.intensity = 100 + Math.random() * 50; // Было: 30-50
+  storm.ambientLight.intensity = 0.5 + Math.random() * 0.3; // И включаем глобальную вспышку
+
+  // 3. Создаем не один, а ЦЕЛЫЙ ПУЧОК молний (от 2 до 4)
+  const boltsToCreate = 2 + Math.floor(Math.random() * 3);
+  for (let i = 0; i < boltsToCreate; i++) {
+    const bolt = lightningBolts.find(b => !b.userData.isActive);
+    if (bolt) {
+      const startPoint = flashPosition.clone();
+
+      // Молнии могут быть "облако-земля" или "облако-облако" для разнообразия
+      let endPoint;
+      if (Math.random() > 0.3) {
+        // Ударяет в "горизонт"
+        endPoint = new THREE.Vector3(
+          startPoint.x + (Math.random() - 0.5) * 400,
+          10,
+          startPoint.z + (Math.random() - 0.5) * 400
+        );
+      } else {
+        // Перекидывается на другую точку в небе
+        endPoint = new THREE.Vector3(
+          startPoint.x + (Math.random() - 0.5) * 600,
+          startPoint.y + (Math.random() - 0.5) * 200,
+          startPoint.z + (Math.random() - 0.5) * 300
+        );
+      }
+
+      bolt.geometry.setAttribute('position', generateLightningGeometry(startPoint, endPoint));
+      bolt.geometry.computeBoundingSphere();
+
+      // Делаем молнии видимыми дольше
+      bolt.material.opacity = 1.0;
+      bolt.userData.isActive = true;
+      bolt.userData.life = 0.8 + Math.random() * 0.4; // Было: 0.5
+      bolt.visible = true;
+    }
+  }
+
+  // 4. Звук грома
+  setTimeout(() => {
+    if (storm.thunderSounds.length > 0 && storm.active) {
+      const sound = storm.thunderSounds[Math.floor(Math.random() * storm.thunderSounds.length)];
+      sound.play();
+    }
+  }, 100 + Math.random() * 200); // Уменьшили задержку для большего хаоса
 }
 
 async function onFileSelect(event: Event) {
@@ -673,6 +812,7 @@ function setupAndPlayAudio(arrayBuffer: ArrayBuffer) {
     scoreEl.textContent = '0';
     gameStarted = true;
     isPaused = false;
+    backgroundSphere.visible = false;
   }, (error) => {
     console.error("Error decoding audio data:", error);
     location.reload();
@@ -885,6 +1025,19 @@ function checkCollisions() {
 function updateStyleUI() {
   const rankChanged = currentRankIndex !== previousRankIndex;
 
+  const isStormActiveNow = currentRankIndex >= 4; // Ранг S или выше
+
+  if (isStormActiveNow && !storm.active) {
+    // Ранг достиг S, а шторм еще не активен -> включаем
+    storm.active = true;
+    storm.lastFlashTime = audioContext.currentTime; // Сбрасываем таймер
+    storm.nextFlashDelay = 1 + Math.random() * 2; // Первая молния ударит скоро
+  } else if (!isStormActiveNow && storm.active) {
+    // Ранг упал ниже S, а шторм активен -> выключаем
+    storm.active = false;
+    if(storm.lightningFlash) storm.lightningFlash.intensity = 0; // Гасим свет
+  }
+
   if (currentRankIndex === -1) {
     styleRankContainer.classList.add('hidden');
     scoreMultiplierEl.textContent = '(x1)';
@@ -974,11 +1127,11 @@ function updateSceneColors(targetColor: THREE.Color) {
   }
 
   // Update background sphere emissive color for glow effect
-  if (backgroundSphere && (backgroundSphere.material as THREE.MeshStandardMaterial).emissive) {
-    (backgroundSphere.material as THREE.MeshStandardMaterial).emissive.copy(currentColor);
-  }
+  // if (backgroundSphere && (backgroundSphere.material as THREE.MeshStandardMaterial).emissive) {
+  //   (backgroundSphere.material as THREE.MeshStandardMaterial).emissive.copy(currentColor);
+  // }
 
-  scene.fog.color.copy(currentColor);
+  // scene.fog.color.copy(currentColor);
 }
 
 
@@ -998,9 +1151,12 @@ function animate() {
     // Use a lerped energy for smooth color and effect transitions
     lerpedEnergy = THREE.MathUtils.lerp(lerpedEnergy, currentEnergy, 0.05);
 
+    analyser.getByteFrequencyData(frequencyData);
+    const bass = (frequencyData[1] + frequencyData[2]) / 2 / 255;
+
     // --- Core track vectors for this frame ---
     const currentFrame = getInterpolatedFrame(playerProgress);
-    const {point: currentPoint, tangent, normal: trackNormal, binormal} = currentFrame;
+    const { point: currentPoint, tangent, normal: trackNormal, binormal } = currentFrame;
 
     // --- Player Logic ---
     if (keyState.left) {
@@ -1038,6 +1194,56 @@ function animate() {
     camera.lookAt(cameraLookAtTarget);
 
     // --- Effects and Visuals ---
+
+    if (storm.active && storm.lightningFlash && storm.ambientLight) {
+      storm.lightningFlash.intensity = Math.max(0, storm.lightningFlash.intensity - 250 * deltaTime);
+      storm.ambientLight.intensity = Math.max(0, storm.ambientLight.intensity - 2.0 * deltaTime);
+
+      lightningBolts.forEach(bolt => {
+        if (bolt.userData.isActive) {
+          bolt.userData.life -= deltaTime;
+          bolt.material.opacity = Math.max(0, bolt.userData.life * 2);
+          if (bolt.userData.life <= 0) {
+            bolt.userData.isActive = false;
+            bolt.visible = false;
+          }
+        }
+      });
+
+      const currentTime = audioContext.currentTime;
+      if (currentTime > storm.lastFlashTime + storm.nextFlashDelay) {
+        triggerLightning();
+        storm.lastFlashTime = currentTime;
+        storm.nextFlashDelay = 0.1 + Math.random() * 0.4;
+      }
+    }
+
+    // 2. Плавное изменение цвета фона для SSS ранга
+    const isSssRank = currentRankIndex === STYLE_RANKS.length - 1;
+    const targetBackgroundColor = isSssRank ? SSS_SKY_COLOR : new THREE.Color(0x000000); // Целевой цвет: бордовый или черный
+
+    // Убедимся, что scene.background инициализирован как цвет
+    if (!(scene.background instanceof THREE.Color)) {
+      scene.background = new THREE.Color(0x000000);
+    }
+    (scene.background as THREE.Color).lerp(targetBackgroundColor, 0.05);
+
+    // 3. Цвет тумана должен соответствовать цвету фона для плавного перехода
+    scene.fog.color.copy(scene.background as THREE.Color);
+
+    // Применяем цвет и интенсивность к материалу
+    if (backgroundSphere && (backgroundSphere.material as THREE.MeshStandardMaterial).emissive) {
+      // Сетка всегда следует за камерой
+      backgroundSphere.position.copy(camera.position);
+
+      // Цвет сетки = цвет трассы
+      (backgroundSphere.material as THREE.MeshStandardMaterial).emissive.copy(currentColor);
+
+      // Сетка светится ярче на высоких рангах
+      const gridIntensity = isSssRank ? 1.0 : 0.2 + bass * 1.5;
+      (backgroundSphere.material as THREE.MeshStandardMaterial).emissiveIntensity = gridIntensity;
+    }
+    scene.fog.color.copy(currentSkyColor);
 
     // HYPERSPACE LOGIC: Reactive trigger based on sustained time in a high-energy zone.
     const HYPERSPACE_THRESHOLD = 0.70;
@@ -1134,14 +1340,12 @@ function animate() {
     }
 
     // Update other scene elements
-    analyser.getByteFrequencyData(frequencyData);
-    const bass = (frequencyData[1] + frequencyData[2]) / 2 / 255;
     trackGroup.children.forEach((c: any) => {
       if (c.material?.emissive) c.material.emissiveIntensity = 0.6 + bass * 1.2;
     });
 
     if (backgroundSphere) {
-      (backgroundSphere.material as THREE.MeshStandardMaterial).emissiveIntensity = 0.2 + bass * 1.5;
+      backgroundSphere.position.copy(camera.position);
     }
 
     nebulaParticles.position.z = camera.position.z - 300;

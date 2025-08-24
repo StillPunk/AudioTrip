@@ -34,7 +34,7 @@
 
   <div id="game-hud" class="hidden">
     <div id="score-container">
-      Score: <span id="score">0</span>
+      Score: <span id="score">0</span> <span id="score-multiplier"></span>
     </div>
     <button id="pause-button">⏸</button>
   </div>
@@ -43,6 +43,13 @@
     <h1>Paused</h1>
     <button id="resume-button">Resume</button>
     <button id="main-menu-button">Main Menu</button>
+  </div>
+
+  <div id="style-rank-container" class="hidden">
+    <img id="rank-image" src="" alt="Current Rank"/>
+    <div id="progress-bar-container">
+      <div id="progress-bar-fill"></div>
+    </div>
   </div>
 
   <div id="end-screen" class="hidden">

@@ -16,7 +16,6 @@ const fileLabel = document.getElementById('file-label') as HTMLLabelElement;
 const loadingScreen = document.getElementById('loading-screen')!;
 const loadingText = document.getElementById('loading-text')!;
 const analysisText = document.getElementById('analysis-text')!;
-const scoreContainer = document.getElementById('score-container')!;
 const scoreEl = document.getElementById('score')!;
 const endScreen = document.getElementById('end-screen')!;
 const finalScoreEl = document.getElementById('final-score')!;
@@ -27,6 +26,20 @@ const pauseButton = document.getElementById('pause-button')!;
 const pauseMenu = document.getElementById('pause-menu')!;
 const resumeButton = document.getElementById('resume-button')!;
 const mainMenuButton = document.getElementById('main-menu-button')!;
+const styleRankContainer = document.getElementById('style-rank-container')!;
+const rankImage = document.getElementById('rank-image') as HTMLImageElement;
+const progressBarFill = document.getElementById('progress-bar-fill') as HTMLElement;
+const scoreMultiplierEl = document.getElementById('score-multiplier')!;
+
+const STYLE_RANKS = [
+  { name: 'Dismal', rank: 'D', hitsNeeded: 5, multiplier: 2, image: 'assets/images/rank_d.png' },
+  { name: 'Crazy', rank: 'C', hitsNeeded: 10, multiplier: 3, image: 'assets/images/rank_c.png' },
+  { name: 'Badass', rank: 'B', hitsNeeded: 15, multiplier: 4, image: 'assets/images/rank_b.png' },
+  { name: 'Apocalyptic', rank: 'A', hitsNeeded: 20, multiplier: 5, image: 'assets/images/rank_a.png' },
+  { name: 'Savage!', rank: 'S', hitsNeeded: 25, multiplier: 6, image: 'assets/images/rank_s.png' },
+  { name: 'Sick Skills!', rank: 'SS', hitsNeeded: 30, multiplier: 7, image: 'assets/images/rank_ss.png' },
+  { name: 'Smokin\' Sexy Style!', rank: 'SSS', hitsNeeded: 35, multiplier: 8, image: 'assets/images/rank_sss.png' }
+];
 
 // --- 3D Scene Variables ---
 let scene: THREE.Scene, camera: THREE.PerspectiveCamera, renderer: THREE.WebGLRenderer, composer: EffectComposer;
@@ -50,6 +63,8 @@ let lastPlayerProgress = 0; // To track progress between frames for accurate col
 let songData: { duration: number, energyMap: number[] } | null = null;
 let gameStarted = false;
 let isPaused = false;
+let consecutiveHits = 0;
+let currentRankIndex = -1;
 let targetPlayerLane = 1; // The lane the player is moving towards
 let actualPlayerLane = 1; // The player's current physical lane (can be fractional)
 const keyState = {left: false, right: false}; // Keyboard state for controls
@@ -91,7 +106,7 @@ const greyBlockPool: any[] = [];
 async function loadPlayerModel(): Promise<THREE.Group> {
   const loader = new GLTFLoader();
   return new Promise((resolve, reject) => {
-    loader.load('hurricane_triplestar__low_poly.glb',
+    loader.load('assets/models/hurricane_triplestar__low_poly.glb',
       (gltf) => {
         const modelGroup = gltf.scene;
 
@@ -643,6 +658,9 @@ function setupAndPlayAudio(arrayBuffer: ArrayBuffer) {
     loadingScreen.classList.add('hidden');
     gameHud.classList.remove('hidden');
     score = 0;
+    consecutiveHits = 0;
+    currentRankIndex = -1;
+    updateStyleUI();
     playerProgress = 0;
     lastPlayerProgress = 0;
     lerpedEnergy = 0;
@@ -720,7 +738,7 @@ function pregenerateBlocks(energyMap: number[]) {
       const openLane = Math.floor(Math.random() * NUM_LANES);
       for (let lane = 0; lane < NUM_LANES; lane++) {
         if (lane !== openLane) {
-          allBlocks.push({progress, lane, type: 'grey', mesh: null, collected: false});
+          // allBlocks.push({progress, lane, type: 'grey', mesh: null, collected: false});
         }
       }
       consecutiveObstacles++;
@@ -808,25 +826,94 @@ function updateBlocks() {
 function checkCollisions() {
   for (const block of allBlocks) {
     if (block.mesh && !block.collected && Math.round(actualPlayerLane) === block.lane) {
-      // Check if the player's center has passed the block's center in the last frame.
+      // Проверяем, что игрок пересек блок в этом кадре
       if (lastPlayerProgress < block.progress && playerProgress >= block.progress) {
         if (block.type === 'color') {
-          score += 10;
+          // --- УСПЕШНОЕ ПОПАДАНИЕ ПО ЦВЕТНОМУ БЛОКУ ---
+          consecutiveHits++;
+
+          // 1. Определяем текущий ранг
+          // Идем по рангам с конца, чтобы найти самый высокий достигнутый
+          let newRankIndex = -1;
+          for (let i = STYLE_RANKS.length - 1; i >= 0; i--) {
+            if (consecutiveHits >= STYLE_RANKS[i].hitsNeeded) {
+              newRankIndex = i;
+              break;
+            }
+          }
+          currentRankIndex = newRankIndex;
+
+          // 2. Рассчитываем очки с множителем
+          const multiplier = currentRankIndex > -1 ? STYLE_RANKS[currentRankIndex].multiplier : 1;
+          score += 10 * multiplier;
           triggerPositiveBurst(block.mesh.position, block.mesh.material.color);
+
         } else {
+          // --- СТОЛКНОВЕНИЕ С СЕРЫМ БЛОКОМ ---
+          consecutiveHits = 0; // Сбрасываем счетчик
           score = Math.max(0, score - 25);
+
+          // 1. Логика понижения ранга
+          if (currentRankIndex >= 4) { // Если ранг S, SS или SSS
+            currentRankIndex = 2; // Падаем до B (индекс 2)
+          } else if (currentRankIndex > 0) { // Если C, B, A
+            currentRankIndex -= 2; // Падаем на 2 ранга
+          } else { // Если D или нет ранга
+            currentRankIndex = -1; // Полный сброс
+          }
+
+          // 2. Эффекты столкновения
           shakeTime = 0.4;
           shakeIntensity = 0.3;
           vignette.style.opacity = '1';
-          setTimeout(() => {
-            vignette.style.opacity = '0';
-          }, 100);
+          setTimeout(() => { vignette.style.opacity = '0'; }, 100);
         }
+
+        // Обновляем UI после любого столкновения
         scoreEl.textContent = score.toString();
+        updateStyleUI();
+
         block.collected = true;
         recycleToPool(block);
       }
     }
+  }
+}
+
+function updateStyleUI() {
+  if (currentRankIndex === -1) {
+    styleRankContainer.classList.add('hidden');
+    scoreMultiplierEl.textContent = '(x1)';
+    return;
+  }
+
+  styleRankContainer.classList.remove('hidden');
+
+  let newClass = null;
+  if (currentRankIndex > -1) {
+    newClass = currentRankIndex < 4 ? 'style-rank-blue' : 'style-rank-gold';
+  }
+
+  [styleRankContainer, gameHud].forEach(el => {
+    el.classList.remove('style-rank-blue', 'style-rank-gold');
+    if (newClass) {
+      el.classList.add(newClass);
+    }
+  });
+
+  const currentRank = STYLE_RANKS[currentRankIndex];
+  scoreMultiplierEl.textContent = `(x${currentRank.multiplier})`;
+  rankImage.src = currentRank.image;
+
+  const isMaxRank = currentRankIndex === STYLE_RANKS.length - 1;
+  if (isMaxRank) {
+    progressBarFill.style.width = '100%';
+  } else {
+    const hitsForPrevRank = currentRankIndex === 0 ? 0 : STYLE_RANKS[currentRankIndex - 1].hitsNeeded;
+    const hitsForNextRank = STYLE_RANKS[currentRankIndex + 1].hitsNeeded;
+
+    const progress = (consecutiveHits - currentRank.hitsNeeded) / (hitsForNextRank - currentRank.hitsNeeded);
+    progressBarFill.style.width = `${Math.min(progress, 1) * 100}%`;
   }
 }
 
@@ -1097,6 +1184,7 @@ function endGame() {
   if (!gameStarted) return;
   gameStarted = false;
   gameHud.classList.add('hidden');
+  styleRankContainer.classList.add('hidden');
   finalScoreEl.textContent = score.toString();
   endScreen.classList.remove('hidden');
   cancelAnimationFrame(animationFrameId);

@@ -786,6 +786,7 @@ function createTrackMesh(frames: any[]) {
   return group;
 }
 
+// --- ОБНОВЛЕННАЯ ФУНКЦИЯ ДЛЯ НАСТОЯЩЕГО ЭФФЕКТА ЭКВАЛАЙЗЕРА ---
 function updateRailEqualizer(rail: THREE.Mesh, frequencyData: Uint8Array) {
   if (!rail || !rail.userData.originalVertices) return;
 
@@ -794,33 +795,49 @@ function updateRailEqualizer(rail: THREE.Mesh, frequencyData: Uint8Array) {
   const normals = rail.geometry.attributes.normal;
   const vertexCount = originalPositions.count;
 
-  const EQUALIZER_INTENSITY = 0.5; // <<< МОЖЕТЕ НАСТРОИТЬ СИЛУ ЭФФЕКТА ЗДЕСЬ
+  // --- НАСТРОЙКИ ЭФФЕКТА (можете их менять) ---
+  const BASS_INFLUENCE = 1.4;     // Насколько сильно бас "надувает" волны
+  const MID_WAVE_SPEED = 0.5;    // Как часто идут волны (меньше = длиннее волны)
+  const TREBLE_FLICKER = 0.1;     // Сила "электрического" мерцания
+
+  // Получаем репрезентативные значения из разных частей спектра
+  const bassValue = (frequencyData[2] + frequencyData[3] + frequencyData[4]) / 3 / 255.0;
+  const midValue = frequencyData[Math.floor(frequencyData.length / 2)] / 255.0;
+  const trebleValue = frequencyData[frequencyData.length - 20] / 255.0; // Берем почти с конца
 
   for (let i = 0; i < vertexCount; i++) {
-    // Получаем значение из аудиоданных (используем % для зацикливания паттерна)
-    const freqIndex = i % frequencyData.length;
-    const freqValue = frequencyData[freqIndex] / 255.0; // Нормализуем до 0-1
-
-    // Получаем исходную позицию и нормаль вершины
-    const ox = originalPositions.getX(i);
-    const oy = originalPositions.getY(i);
+    // Получаем Z-координату вершины, чтобы волна шла вдоль трассы
     const oz = originalPositions.getZ(i);
 
+    // 1. Формируем основную волну
+    const wave = Math.sin(oz * midValue * MID_WAVE_SPEED + audioContext.currentTime * 5);
+
+    // 2. Определяем амплитуду (высоту) волны на основе басов
+    const amplitude = bassValue * BASS_INFLUENCE;
+
+    // 3. Добавляем высокочастотный "треск" на основе верхних частот
+    const flicker = (Math.random() - 0.5) * trebleValue * TREBLE_FLICKER;
+
+    // 4. Складываем все вместе для финального смещения
+    const displacement = amplitude * wave + flicker;
+
+    // Получаем исходную позицию и нормаль
+    const ox = originalPositions.getX(i);
+    const oy = originalPositions.getY(i);
+    const oz_pos = originalPositions.getZ(i); // Переименовал, чтобы не конфликтовать с oz выше
     const nx = normals.getX(i);
     const ny = normals.getY(i);
     const nz = normals.getZ(i);
 
-    // Смещаем вершину вдоль ее нормали на величину, зависящую от частоты
-    const displacement = freqValue * EQUALIZER_INTENSITY;
+    // Смещаем вершину вдоль ее нормали
     currentPositions.setXYZ(
       i,
       ox + nx * displacement,
       oy + ny * displacement,
-      oz + nz * displacement
+      oz_pos + nz * displacement
     );
   }
 
-  // ОЧЕНЬ ВАЖНО: говорим Three.js, что вершины изменились
   currentPositions.needsUpdate = true;
   rail.userData.isDeformed = true;
 }

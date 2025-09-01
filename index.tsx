@@ -53,7 +53,7 @@ let score = 0;
 let videoScreensGroup: THREE.Group;
 const videoElements: HTMLVideoElement[] = [];
 let isARankEffectActive = false;
-const NUM_SCREENS = 8;
+const NUM_SCREENS = 4;
 let videoUrl = '';
 
 // --- Game Data & State ---
@@ -118,7 +118,6 @@ for (let i = 0; i < STAR_COUNT; i++) {
   STAR_POSITIONS[i3 + 1] = (Math.random() - 0.5) * 3000;
   STAR_POSITIONS[i3 + 2] = (Math.random() - 0.5) * 4000;
 }
-
 
 // --- Block Management ---
 const allBlocks: any[] = [];
@@ -571,6 +570,8 @@ async function onFileSelect(event: Event) {
   loadingScreen.classList.remove('hidden');
   loadingText.classList.add('hidden');
   analysisText.classList.remove('hidden');
+
+  preloadVideoScreens();
 
   try {
     const arrayBuffer = await file.arrayBuffer();
@@ -1507,21 +1508,30 @@ function animate() {
 
     if (isARankEffectActive) {
       videoScreensGroup.children.forEach(screen => {
-        const material = (screen as THREE.Mesh).material as THREE.MeshBasicMaterial;
-        if (material.opacity < 0.9) {
-          material.opacity += 0.5 * deltaTime; // Скорость появления
+        if (screen.userData.isReady) {
+          const material = (screen as THREE.Mesh).material as THREE.MeshStandardMaterial;
+          if (material.opacity < 0.9) {
+            material.opacity += 0.5 * deltaTime;
+          }
+
+          const video = ((material.emissiveMap as THREE.VideoTexture).source.data as HTMLVideoElement);
+          if (video.paused) {
+            video.play().catch(e => {});
+          }
         }
       });
     } else if (videoScreensGroup.children.length > 0) {
+      // Плавное исчезновение (уменьшение opacity)
       let allFadedOut = true;
       videoScreensGroup.children.forEach(screen => {
-        const material = (screen as THREE.Mesh).material as THREE.MeshBasicMaterial;
+        const material = (screen as THREE.Mesh).material as THREE.MeshStandardMaterial;
         if (material.opacity > 0) {
           allFadedOut = false;
           material.opacity -= 1.0 * deltaTime; // Скорость исчезновения
         }
       });
 
+      // Когда все исчезло, скрываем группу и ставим видео на паузу
       if (allFadedOut && videoScreensGroup.visible) {
         videoScreensGroup.visible = false;
         videoElements.forEach(video => video.pause());
@@ -1564,57 +1574,45 @@ function endGame() {
  * Создает и размещает видео-экраны вокруг камеры, создавая эффект "галереи".
  * Вызывается один раз при первом достижении ранга 'A'.
  */
-async function setupAndPositionVideoScreens() {
-  if (!videoUrl.trim()) {
-    console.warn("URL видео для A-Rank не указан.");
+// --- ПОЛНОСТЬЮ ЗАМЕНИТЕ ЭТУ ФУНКЦИЮ ---
+
+/**
+ * МОМЕНТАЛЬНО создает 3D-объекты экранов из ПРЕДЗАГРУЖЕННЫХ видео.
+ * Вызывается при достижении ранга 'A'.
+ */
+// --- ЗАМЕНИТЕ ЭТУ ФУНКЦИЮ ---
+
+function setupAndPositionVideoScreens() {
+  if (videoElements.length === 0) {
+    console.warn("Видео-элементы не были предзагружены.");
     return;
   }
-
-  const streamUrl = `http://localhost:3001/video-stream?url=${encodeURIComponent(videoUrl)}`;
 
   const screenWidth = 22;
   const screenHeight = screenWidth * (9 / 16);
   const geometry = new THREE.PlaneGeometry(screenWidth, screenHeight);
 
-  for (let i = 0; i < NUM_SCREENS; i++) {
-    const video = document.createElement('video');
-    video.style.display = 'none';
-    video.src = streamUrl;
-    video.crossOrigin = 'anonymous';
-    video.muted = true;
-    video.loop = true;
-    video.preload = 'auto';
-    document.body.appendChild(video);
-    videoElements.push(video);
+  for (let i = 0; i < videoElements.length; i++) {
+    const video = videoElements[i] as any;
 
     const texture = new THREE.VideoTexture(video);
-
-    // --- ФИНАЛЬНЫЙ, ПРАВИЛЬНЫЙ МАТЕРИАЛ ---
     const material = new THREE.MeshStandardMaterial({
       emissive: 0xffffff,
-      emissiveIntensity: 1.0,
+      emissiveIntensity: 0.5,
       emissiveMap: texture,
       side: THREE.DoubleSide,
       transparent: true,
       opacity: 0,
       color: 0x000000,
-      fog: false // <-- РЕШЕНИЕ ПРОБЛЕМЫ С ФИЛЬТРОМ
+      fog: false
     });
 
     const screenMesh = new THREE.Mesh(geometry, material);
+
+    screenMesh.userData.isReady = video.isReady;
+
     videoScreensGroup.add(screenMesh);
   }
-
-  // Логика запуска видео в разное время
-  const firstVideo = videoElements[0];
-  firstVideo.addEventListener('loadedmetadata', () => {
-    const duration = firstVideo.duration;
-    if (duration && duration !== Infinity) {
-      videoElements.forEach(video => {
-        video.currentTime = Math.random() * duration * 0.8;
-      });
-    }
-  }, { once: true });
 }
 
 /**
@@ -1625,12 +1623,7 @@ function updateVideoScreensVisibility(visible: boolean) {
 
   if (visible) {
     videoScreensGroup.visible = true;
-    videoElements.forEach(video => {
-      // .play() возвращает Promise, его можно безопасно игнорировать, т.к. видео без звука
-      video.play().catch(e => console.warn("Не удалось запустить видео:", e));
-    });
   }
-  // Плавное исчезновение обрабатывается в цикле animate
 }
 
 /**
@@ -1648,10 +1641,10 @@ function updateVideoScreensPosition() {
 
   // --- НАСТРОЙКИ "ГАЛЕРЕИ" С ИСПРАВЛЕННЫМИ ЗНАЧЕНИЯМИ ---
   // 1. ДЕЛАЕМ ЭКРАНЫ БЛИЖЕ
-  const START_AHEAD_UNITS = 20;   // Первый экран ближе.
-  const SPACING_UNITS = 40;       // Расстояние между экранами.
+  const START_AHEAD_UNITS = 15;   // Первый экран ближе.
+  const SPACING_UNITS = 25;       // Расстояние между экранами.
   const SIDE_OFFSET_UNITS = 30;
-  const VERTICAL_OFFSET_UNITS = 8;
+  const VERTICAL_OFFSET_UNITS = 5;
   // --------------------------------------------------------
 
   const playerLookAtTarget = getInterpolatedFrame(playerProgress).point;
@@ -1696,6 +1689,46 @@ function updateVideoScreensPosition() {
     // Применяем финальный, смешанный поворот
     screen.quaternion.copy(_parallelQuat);
   });
+}
+
+/**
+ * ЗАРАНЕЕ загружает все видео-чанки в фоне, не создавая 3D-объектов.
+ * Вызывается сразу после выбора файла.
+ */
+// --- ЗАМЕНИТЕ ЭТУ ФУНКЦИЮ ---
+
+async function preloadVideoScreens() {
+  if (!videoUrl.trim()) return;
+  console.log("Начинаю предзагрузку видео-чанков...");
+
+  const assumedDuration = 240;
+  const segmentDuration = assumedDuration / NUM_SCREENS;
+
+  for (let i = 0; i < NUM_SCREENS; i++) {
+    const startTime = Math.floor(i * segmentDuration);
+    const chunkUrl = `http://localhost:3001/get-video-chunk?url=${encodeURIComponent(videoUrl)}&startTime=${startTime}&duration=${segmentDuration}`;
+
+    const video = document.createElement('video');
+    (video as any).isReady = false;
+
+    video.style.display = 'none';
+    video.src = chunkUrl;
+    video.crossOrigin = 'anonymous';
+    video.muted = true;
+    video.loop = true;
+    video.preload = 'auto';
+    document.body.appendChild(video);
+    videoElements.push(video);
+
+    video.addEventListener('canplaythrough', () => {
+      (video as any).isReady = true;
+    }, { once: true });
+
+    video.addEventListener('error', () => {
+      (video as any).isReady = false; // Помечаем как не готовый
+    }, { once: true });
+    // ---------------------------------------------
+  }
 }
 
 function onWindowResize() {

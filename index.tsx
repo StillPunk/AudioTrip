@@ -1,3 +1,5 @@
+declare const jsmediatags: any;
+
 // --- Imports ---
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
@@ -29,7 +31,6 @@ const styleRankContainer = document.getElementById('style-rank-container')!;
 const rankImage = document.getElementById('rank-image') as HTMLImageElement;
 const progressBarFill = document.getElementById('progress-bar-fill') as HTMLElement;
 const scoreMultiplierEl = document.getElementById('score-multiplier')!;
-const videoUrlInput = document.getElementById('video-url-input') as HTMLInputElement;
 
 const STYLE_RANKS = [
   { name: 'Dismal', rank: 'D', hitsNeeded: 5, multiplier: 2, image: 'assets/images/rank_d.png' },
@@ -277,7 +278,6 @@ async function init() {
     }
   });
 
-  videoUrlInput.addEventListener('change', () => videoUrl = videoUrlInput.value);
   videoScreensGroup = new THREE.Group();
   scene.add(videoScreensGroup);
 
@@ -571,19 +571,83 @@ async function onFileSelect(event: Event) {
   loadingText.classList.add('hidden');
   analysisText.classList.remove('hidden');
 
-  preloadVideoScreens();
+  // НОВАЯ ФУНКЦИЯ ДЛЯ "ОЧИСТКИ" НАЗВАНИЯ ПЕСНИ ОТ МУСОРА
+  const cleanSearchQuery = (rawQuery: string): string => {
+    return rawQuery
+      // Удаляем все в скобках () и []
+      .replace(/\[.*?\]/g, '')
+      .replace(/\(.*?\)/g, '')
+      // Удаляем типичные слова-паразиты
+      .replace(/official music video|official video|lyrics|audio|hd|4k/gi, '')
+      // Удаляем сайты
+      .replace(/(www\.|http:\/\/|https:\/\/)[^\s]+/g, '')
+      // Удаляем расширение файла
+      .replace(/\.[^/.]+$/, "")
+      // Удаляем номера треков (01., 02 -)
+      .replace(/^\d+\s*[-.]?\s*/, '')
+      // Заменяем разные тире на стандартный дефис
+      .replace(/[—–_]/g, '-')
+      .trim(); // Убираем лишние пробелы
+  };
 
-  try {
-    const arrayBuffer = await file.arrayBuffer();
-    await analyzeAudioAndGenerateTrack(arrayBuffer.slice(0));
-    analysisText.classList.add('hidden');
-    loadingText.classList.remove('hidden');
-    setupAndPlayAudio(arrayBuffer);
-  } catch (error) {
-    console.error("Failed to analyze or play audio:", error);
-    alert("Sorry, there was an error processing that audio file. Please try a different one.");
-    location.reload();
+  const searchAndPreload = (query: string) => {
+    if (!query) {
+      console.warn("[ПОИСК] Не удалось сформировать поисковый запрос.");
+      return;
+    }
+
+    // ОЧИЩАЕМ ЗАПРОС ПЕРЕД ОТПРАВКОЙ
+    const cleanedQuery = cleanSearchQuery(query);
+
+    console.log(`[ПОИСК] Отправляю ОЧИЩЕННЫЙ запрос на сервер: "${cleanedQuery}"`);
+    fetch(`http://localhost:3001/search-video?q=${encodeURIComponent(cleanedQuery)}`)
+      .then(response => {
+        if (response.ok) return response.json();
+        throw new Error('Клип не найден сервером.');
+      })
+      .then(result => {
+        console.log("[ПОИСК] Успешно найден URL клипа:", result.videoUrl);
+        videoUrl = result.videoUrl;
+        preloadVideoScreens();
+      })
+      .catch(error => console.warn(error.message));
+  };
+
+  // 1. ПЫТАЕМСЯ ПРОЧИТАТЬ ТЕГИ
+  jsmediatags.read(file, {
+    onSuccess: (tag: any) => {
+      const tags = tag.tags;
+      let rawQuery = '';
+
+      if (tags.artist && tags.title) {
+        rawQuery = `${tags.artist} - ${tags.title}`;
+      } else {
+        rawQuery = file.name;
+      }
+      searchAndPreload(rawQuery);
+    },
+    onError: (error: any) => {
+      console.warn(`[ПОИСК] Ошибка чтения тегов. Использую имя файла.`);
+      searchAndPreload(file.name);
+    }
+  });
+
+  // 2. АНАЛИЗ АУДИО ИДЕТ ПАРАЛЛЕЛЬНО
+  async function analyzeAndPlayAudio(audioFile: File) {
+    try {
+      const arrayBuffer = await audioFile.arrayBuffer();
+      await analyzeAudioAndGenerateTrack(arrayBuffer.slice(0));
+      analysisText.classList.add('hidden');
+      loadingText.classList.remove('hidden');
+      setupAndPlayAudio(arrayBuffer);
+    } catch (error) {
+      console.error("Критическая ошибка при обработке файла:", error);
+      alert("Sorry, there was an error processing that audio file. Please try a different one.");
+      location.reload();
+    }
   }
+
+  analyzeAndPlayAudio(file);
 }
 
 function smoothArray(data: number[], windowSize: number): number[] {

@@ -29,6 +29,7 @@ const styleRankContainer = document.getElementById('style-rank-container')!;
 const rankImage = document.getElementById('rank-image') as HTMLImageElement;
 const progressBarFill = document.getElementById('progress-bar-fill') as HTMLElement;
 const scoreMultiplierEl = document.getElementById('score-multiplier')!;
+const videoUrlInput = document.getElementById('video-url-input') as HTMLInputElement;
 
 const STYLE_RANKS = [
   { name: 'Dismal', rank: 'D', hitsNeeded: 5, multiplier: 2, image: 'assets/images/rank_d.png' },
@@ -48,6 +49,12 @@ let audioContext: AudioContext, analyser: AnalyserNode, source: AudioBufferSourc
 let frequencyData: Uint8Array;
 let animationFrameId: number;
 let score = 0;
+
+let videoScreensGroup: THREE.Group;
+const videoElements: HTMLVideoElement[] = [];
+let isARankEffectActive = false;
+const NUM_SCREENS = 8;
+let videoUrl = '';
 
 // --- Game Data & State ---
 let trackCurve: THREE.CatmullRomCurve3;
@@ -264,12 +271,16 @@ async function init() {
   ['assets/sounds/thunder1.mp3', 'assets/sounds/thunder2.mp3', 'assets/sounds/thunder3.mp3'].forEach(soundFile => {
     try {
       const audio = new Audio(soundFile);
-      audio.volume = 0.6
+      audio.volume = 0.2
       storm.thunderSounds.push(audio);
     } catch (e) {
       console.warn(`Could not load thunder sound: ${soundFile}`);
     }
   });
+
+  videoUrlInput.addEventListener('change', () => videoUrl = videoUrlInput.value);
+  videoScreensGroup = new THREE.Group();
+  scene.add(videoScreensGroup);
 
   composer = new EffectComposer(renderer);
   composer.addPass(renderScene);
@@ -1089,6 +1100,20 @@ function checkCollisions() {
 function updateStyleUI() {
   const rankChanged = currentRankIndex !== previousRankIndex;
 
+  const isARankNow = currentRankIndex >= 3;
+
+  if (isARankNow && !isARankEffectActive) {
+    isARankEffectActive = true;
+    if (videoScreensGroup.children.length === 0 && videoUrl) {
+      setupAndPositionVideoScreens();
+    }
+    updateVideoScreensVisibility(true);
+
+  } else if (!isARankNow && isARankEffectActive) {
+    isARankEffectActive = false;
+    updateVideoScreensVisibility(false);
+  }
+
   const isStormActiveNow = currentRankIndex >= 4; // Ранг S или выше
 
   if (isStormActiveNow && !storm.active) {
@@ -1284,16 +1309,16 @@ function animate() {
 
     // 2. Плавное изменение цвета фона для SSS ранга
     const isSssRank = currentRankIndex === STYLE_RANKS.length - 1;
-    const targetBackgroundColor = isSssRank ? SSS_SKY_COLOR : new THREE.Color(0x000000); // Целевой цвет: бордовый или черный
+    // const targetBackgroundColor = isSssRank ? SSS_SKY_COLOR : new THREE.Color(0x000000); // Целевой цвет: бордовый или черный
 
     // Убедимся, что scene.background инициализирован как цвет
-    if (!(scene.background instanceof THREE.Color)) {
-      scene.background = new THREE.Color(0x000000);
-    }
-    (scene.background as THREE.Color).lerp(targetBackgroundColor, 0.05);
+    // if (!(scene.background instanceof THREE.Color)) {
+    //   scene.background = new THREE.Color(0x000000);
+    // }
+    // (scene.background as THREE.Color).lerp(targetBackgroundColor, 0.05);
 
     // 3. Цвет тумана должен соответствовать цвету фона для плавного перехода
-    scene.fog.color.copy(scene.background as THREE.Color);
+    // scene.fog.color.copy(scene.background as THREE.Color);
 
     // Применяем цвет и интенсивность к материалу
     if (backgroundSphere && (backgroundSphere.material as THREE.MeshStandardMaterial).emissive) {
@@ -1475,6 +1500,33 @@ function animate() {
     updateSceneColors(getTargetColor(lerpedEnergy));
     updateBlocks();
     checkCollisions();
+
+    if (isARankEffectActive) {
+      updateVideoScreensPosition();
+    }
+
+    if (isARankEffectActive) {
+      videoScreensGroup.children.forEach(screen => {
+        const material = (screen as THREE.Mesh).material as THREE.MeshBasicMaterial;
+        if (material.opacity < 0.9) {
+          material.opacity += 0.5 * deltaTime; // Скорость появления
+        }
+      });
+    } else if (videoScreensGroup.children.length > 0) {
+      let allFadedOut = true;
+      videoScreensGroup.children.forEach(screen => {
+        const material = (screen as THREE.Mesh).material as THREE.MeshBasicMaterial;
+        if (material.opacity > 0) {
+          allFadedOut = false;
+          material.opacity -= 1.0 * deltaTime; // Скорость исчезновения
+        }
+      });
+
+      if (allFadedOut && videoScreensGroup.visible) {
+        videoScreensGroup.visible = false;
+        videoElements.forEach(video => video.pause());
+      }
+    }
   } else {
     if (backgroundSphere) {
       const time = clock.getElapsedTime();
@@ -1493,6 +1545,157 @@ function endGame() {
   finalScoreEl.textContent = score.toString();
   endScreen.classList.remove('hidden');
   cancelAnimationFrame(animationFrameId);
+  videoElements.forEach(video => {
+    video.pause();
+    video.src = '';
+    video.remove();
+  });
+  videoElements.length = 0;
+  if(videoScreensGroup) {
+    while(videoScreensGroup.children.length > 0){
+      videoScreensGroup.remove(videoScreensGroup.children[0]);
+    }
+  }
+  // if(videoScreensGroup) camera.remove(videoScreensGroup);
+  isARankEffectActive = false;
+}
+
+/**
+ * Создает и размещает видео-экраны вокруг камеры, создавая эффект "галереи".
+ * Вызывается один раз при первом достижении ранга 'A'.
+ */
+async function setupAndPositionVideoScreens() {
+  if (!videoUrl.trim()) {
+    console.warn("URL видео для A-Rank не указан.");
+    return;
+  }
+
+  const streamUrl = `http://localhost:3001/video-stream?url=${encodeURIComponent(videoUrl)}`;
+
+  const screenWidth = 22;
+  const screenHeight = screenWidth * (9 / 16);
+  const geometry = new THREE.PlaneGeometry(screenWidth, screenHeight);
+
+  for (let i = 0; i < NUM_SCREENS; i++) {
+    const video = document.createElement('video');
+    video.style.display = 'none';
+    video.src = streamUrl;
+    video.crossOrigin = 'anonymous';
+    video.muted = true;
+    video.loop = true;
+    video.preload = 'auto';
+    document.body.appendChild(video);
+    videoElements.push(video);
+
+    const texture = new THREE.VideoTexture(video);
+
+    // --- ФИНАЛЬНЫЙ, ПРАВИЛЬНЫЙ МАТЕРИАЛ ---
+    const material = new THREE.MeshStandardMaterial({
+      emissive: 0xffffff,
+      emissiveIntensity: 1.0,
+      emissiveMap: texture,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0,
+      color: 0x000000,
+      fog: false // <-- РЕШЕНИЕ ПРОБЛЕМЫ С ФИЛЬТРОМ
+    });
+
+    const screenMesh = new THREE.Mesh(geometry, material);
+    videoScreensGroup.add(screenMesh);
+  }
+
+  // Логика запуска видео в разное время
+  const firstVideo = videoElements[0];
+  firstVideo.addEventListener('loadedmetadata', () => {
+    const duration = firstVideo.duration;
+    if (duration && duration !== Infinity) {
+      videoElements.forEach(video => {
+        video.currentTime = Math.random() * duration * 0.8;
+      });
+    }
+  }, { once: true });
+}
+
+/**
+ * Управляет видимостью и воспроизведением видео на экранах.
+ */
+function updateVideoScreensVisibility(visible: boolean) {
+  if (videoElements.length === 0) return;
+
+  if (visible) {
+    videoScreensGroup.visible = true;
+    videoElements.forEach(video => {
+      // .play() возвращает Promise, его можно безопасно игнорировать, т.к. видео без звука
+      video.play().catch(e => console.warn("Не удалось запустить видео:", e));
+    });
+  }
+  // Плавное исчезновение обрабатывается в цикле animate
+}
+
+/**
+ * Обновляет мировые координаты и ОРИЕНТАЦИЮ видео-экранов,
+ * основываясь на текущем кадре ТРАССЫ.
+ */
+
+const _screenPos = new THREE.Vector3();
+const _lookAtMatrix = new THREE.Matrix4();
+const _parallelQuat = new THREE.Quaternion();
+const _lookAtQuat = new THREE.Quaternion();
+
+function updateVideoScreensPosition() {
+  if (!videoScreensGroup.visible) return;
+
+  // --- НАСТРОЙКИ "ГАЛЕРЕИ" С ИСПРАВЛЕННЫМИ ЗНАЧЕНИЯМИ ---
+  // 1. ДЕЛАЕМ ЭКРАНЫ БЛИЖЕ
+  const START_AHEAD_UNITS = 20;   // Первый экран ближе.
+  const SPACING_UNITS = 40;       // Расстояние между экранами.
+  const SIDE_OFFSET_UNITS = 30;
+  const VERTICAL_OFFSET_UNITS = 8;
+  // --------------------------------------------------------
+
+  const playerLookAtTarget = getInterpolatedFrame(playerProgress).point;
+
+  videoScreensGroup.children.forEach((screen, index) => {
+    const isLeftSide = index < NUM_SCREENS / 2;
+    const sideMultiplier = isLeftSide ? -1 : 1;
+    const indexOnSide = index % (NUM_SCREENS / 2);
+
+    const screenProgress = playerProgress + (START_AHEAD_UNITS + indexOnSide * SPACING_UNITS) / trackCurve.getLength();
+
+    if (screenProgress >= 1.0) {
+      screen.visible = false;
+      return;
+    }
+    screen.visible = true;
+
+    const screenFrame = getInterpolatedFrame(screenProgress);
+
+    // Расчет позиции (остается без изменений, он верный)
+    _screenPos.copy(screenFrame.point)
+      .add(screenFrame.binormal.clone().multiplyScalar(sideMultiplier * SIDE_OFFSET_UNITS))
+      .add(screenFrame.normal.clone().multiplyScalar(VERTICAL_OFFSET_UNITS));
+    screen.position.copy(_screenPos);
+
+    // --- ШАГ 2: ПРАВИЛЬНЫЙ ПОВОРОТ НА ~45 ГРАДУСОВ ---
+    // 1. Сначала задаем базовую ориентацию: экран параллелен трассе и "смотрит" в центр.
+    const tangent = screenFrame.tangent;
+    const normal = screenFrame.normal;
+    const binormal = screenFrame.binormal.clone().multiplyScalar(-sideMultiplier); // Вектор, куда "смотрит" экран
+
+    _lookAtMatrix.makeBasis(tangent, normal, binormal);
+    _parallelQuat.setFromRotationMatrix(_lookAtMatrix);
+
+    // 2. Затем задаем целевую ориентацию: экран "смотрит" прямо на игрока.
+    _lookAtMatrix.lookAt(screen.position, playerLookAtTarget, normal);
+    _lookAtQuat.setFromRotationMatrix(_lookAtMatrix);
+
+    // 3. Смешиваем две ориентации. Фактор 0.7 дает поворот примерно на 45 градусов.
+    _parallelQuat.slerp(_lookAtQuat, 0.7);
+
+    // Применяем финальный, смешанный поворот
+    screen.quaternion.copy(_parallelQuat);
+  });
 }
 
 function onWindowResize() {

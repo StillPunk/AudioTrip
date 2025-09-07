@@ -7,6 +7,64 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+
+const SketchShader = {
+  uniforms: {
+    'tDiffuse': { value: null }, // Текстура с предыдущего шага рендеринга
+    'resolution': { value: new THREE.Vector2() } // Разрешение экрана для точных вычислений
+  },
+  // Вершинный шейдер (остается стандартным)
+  vertexShader: `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
+    }
+  `,
+  // Фрагментный шейдер (здесь вся магия)
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    uniform vec2 resolution;
+    varying vec2 vUv;
+
+    void main() {
+      vec2 texel = vec2( 1.0 / resolution.x, 1.0 / resolution.y );
+
+      // Ядро оператора Собеля для определения границ
+      const mat3 Gx = mat3( -1, -2, -1, 0, 0, 0, 1, 2, 1 );
+      const mat3 Gy = mat3( -1, 0, 1, -2, 0, 2, -1, 0, 1 );
+
+      // Получаем значения яркости соседних пикселей
+      float tx0y0 = texture2D( tDiffuse, vUv + texel * vec2( -1, -1 ) ).r;
+      float tx0y1 = texture2D( tDiffuse, vUv + texel * vec2( -1, 0 ) ).r;
+      float tx0y2 = texture2D( tDiffuse, vUv + texel * vec2( -1, 1 ) ).r;
+      float tx1y0 = texture2D( tDiffuse, vUv + texel * vec2( 0, -1 ) ).r;
+      float tx1y1 = texture2D( tDiffuse, vUv + texel * vec2( 0, 0 ) ).r;
+      float tx1y2 = texture2D( tDiffuse, vUv + texel * vec2( 0, 1 ) ).r;
+      float tx2y0 = texture2D( tDiffuse, vUv + texel * vec2( 1, -1 ) ).r;
+      float tx2y1 = texture2D( tDiffuse, vUv + texel * vec2( 1, 0 ) ).r;
+      float tx2y2 = texture2D( tDiffuse, vUv + texel * vec2( 1, 1 ) ).r;
+
+      mat3 I;
+      I[0] = vec3( tx0y0, tx0y1, tx0y2 );
+      I[1] = vec3( tx1y0, tx1y1, tx1y2 );
+      I[2] = vec3( tx2y0, tx2y1, tx2y2 );
+      
+      // Вычисляем градиент (насколько сильно меняется яркость)
+      float Gx_val = dot( Gx[0], I[0] ) + dot( Gx[1], I[1] ) + dot( Gx[2], I[2] );
+      float Gy_val = dot( Gy[0], I[0] ) + dot( Gy[1], I[1] ) + dot( Gy[2], I[2] );
+      float G = sqrt( pow( Gx_val, 2.0 ) + pow( Gy_val, 2.0 ) );
+
+      // Если градиент больше порога, значит это контур
+      if ( G > 0.25 ) { 
+        gl_FragColor = vec4( 0.0, 0.0, 0.0, 1.0 ); // Рисуем контур черным
+      } else {
+        gl_FragColor = vec4( 1.0, 1.0, 1.0, 1.0 ); // Все остальное - белым
+      }
+    }
+  `
+};
 
 // --- DOM Elements ---
 const canvas = document.getElementById('webgl-canvas') as HTMLCanvasElement;
@@ -46,6 +104,7 @@ const STYLE_RANKS = [
 let scene: THREE.Scene, camera: THREE.PerspectiveCamera, renderer: THREE.WebGLRenderer, composer: EffectComposer;
 let player: THREE.Group, trackGroup: THREE.Group, backgroundSphere: THREE.Mesh, nebulaParticles: THREE.Points,
   normalStarfield: THREE.Points, hyperspaceStreaks: THREE.LineSegments, meteorShower: any, positiveBurst: any;
+let sketchPass: ShaderPass;
 let audioContext: AudioContext, analyser: AnalyserNode, source: AudioBufferSourceNode;
 let frequencyData: Uint8Array;
 let animationFrameId: number;
@@ -77,6 +136,7 @@ let targetPlayerLane = 1; // The lane the player is moving towards
 let actualPlayerLane = 1; // The player's current physical lane (can be fractional)
 const keyState = {left: false, right: false}; // Keyboard state for controls
 let timeInRedZone = 0; // Tracks how long player is in a high-energy zone
+let isSketchEffectToggledOn = false;
 
 // --- Color & Effects State ---
 let currentColor = new THREE.Color(0x00bfff);
@@ -284,6 +344,12 @@ async function init() {
   composer = new EffectComposer(renderer);
   composer.addPass(renderScene);
   composer.addPass(bloomPass);
+
+  sketchPass = new ShaderPass(SketchShader);
+  sketchPass.uniforms.resolution.value.x = window.innerWidth * window.devicePixelRatio;
+  sketchPass.uniforms.resolution.value.y = window.innerHeight * window.devicePixelRatio;
+  sketchPass.enabled = false; // Изначально эффект выключен
+  composer.addPass(sketchPass);
 
   window.addEventListener('resize', onWindowResize);
   document.addEventListener('keydown', onKeyDown);
@@ -1020,7 +1086,7 @@ function pregenerateBlocks(energyMap: number[]) {
       const openLane = Math.floor(Math.random() * NUM_LANES);
       for (let lane = 0; lane < NUM_LANES; lane++) {
         if (lane !== openLane) {
-          // allBlocks.push({progress, lane, type: 'grey', mesh: null, collected: false});
+          allBlocks.push({progress, lane, type: 'grey', mesh: null, collected: false});
         }
       }
       consecutiveObstacles++;
@@ -1403,8 +1469,7 @@ function animate() {
       const leftRail = trackGroup.getObjectByName('leftRail') as THREE.Mesh;
       const rightRail = trackGroup.getObjectByName('rightRail') as THREE.Mesh;
 
-      if (storm.active && leftRail && rightRail) {
-        // Если шторм активен, применяем деформацию эквалайзера
+      if (storm.active && leftRail && rightRail && !sketchPass.enabled) {
         updateRailEqualizer(leftRail, frequencyData);
         updateRailEqualizer(rightRail, frequencyData);
       } else if (leftRail && rightRail && (leftRail.userData.isDeformed || rightRail.userData.isDeformed)) {
@@ -1444,6 +1509,8 @@ function animate() {
       lastHyperspaceTriggerTime = audioContext.currentTime;
       hyperspaceJumpCount++;
       timeInRedZone = 0;
+      isSketchEffectToggledOn = !isSketchEffectToggledOn;
+      sketchPass.enabled = isSketchEffectToggledOn;
     }
 
     // Dynamic FOV and Hyperspace Update
@@ -1800,6 +1867,10 @@ function onWindowResize() {
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
   composer.setSize(window.innerWidth, window.innerHeight);
+  if (sketchPass) {
+    sketchPass.uniforms.resolution.value.x = window.innerWidth * window.devicePixelRatio;
+    sketchPass.uniforms.resolution.value.y = window.innerHeight * window.devicePixelRatio;
+  }
 }
 
 init();

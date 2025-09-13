@@ -66,10 +66,13 @@ const SketchShader = {
   `
 };
 
-enum EnvironmentState { SPACE, CITY }
+enum EnvironmentState { SPACE, CITY, SOLAR_SYSTEM }
 let currentEnvironment = EnvironmentState.SPACE;
 let spaceGroup: THREE.Group;
 let cityBackgroundSphere: THREE.Mesh;
+
+let solarSystemGroup: THREE.Group;
+const planets: THREE.Mesh[] = [];
 
 // --- DOM Elements ---
 const canvas = document.getElementById('webgl-canvas') as HTMLCanvasElement;
@@ -347,6 +350,35 @@ function createCityEnvironment() {
   }
 }
 
+function setActiveEnvironment(env: EnvironmentState) {
+  if (spaceGroup) spaceGroup.visible = false;
+  if (cityGroup) cityGroup.visible = false;
+  if (solarSystemGroup) solarSystemGroup.visible = false;
+
+  if (cityBackgroundSphere) cityBackgroundSphere.visible = false;
+
+  if (env === EnvironmentState.SPACE) {
+    if (spaceGroup) spaceGroup.visible = true;
+
+    scene.fog = new THREE.Fog(0x000000, 10, 250);
+    scene.background = new THREE.Color(0x000000);
+
+  } else if (env === EnvironmentState.CITY) {
+    if (cityGroup) cityGroup.visible = true;
+    if (cityBackgroundSphere) cityBackgroundSphere.visible = true;
+
+    const fogColor = 0x1a001a;
+    scene.fog = new THREE.FogExp2(fogColor, 0.0015);
+    scene.background = new THREE.Color(fogColor);
+
+  } else if (env === EnvironmentState.SOLAR_SYSTEM) {
+    if (solarSystemGroup) solarSystemGroup.visible = true;
+
+    scene.fog = null;
+    scene.background = new THREE.Color(0x000000);
+  }
+}
+
 function createCityBackground() {
   const geometry = new THREE.SphereGeometry(1000, 64, 32);
 
@@ -361,6 +393,46 @@ function createCityBackground() {
 
   const sphere = new THREE.Mesh(geometry, material);
   return sphere;
+}
+
+function createSolarSystemEnvironment() {
+  solarSystemGroup = new THREE.Group();
+  solarSystemGroup.visible = false;
+  scene.add(solarSystemGroup);
+
+  const textureLoader = new THREE.TextureLoader();
+
+  // 1. Создаем фоновую "небесную сферу"
+  const skySphereGeo = new THREE.SphereGeometry(2000, 64, 32);
+  const skySphereMat = new THREE.MeshBasicMaterial({
+    map: textureLoader.load('assets/images/milky_way.jpg'), // Ваша текстура космоса
+    side: THREE.BackSide,
+    fog: false
+  });
+  const skySphere = new THREE.Mesh(skySphereGeo, skySphereMat);
+  solarSystemGroup.add(skySphere);
+
+  // 2. Создаем несколько планет
+  const planetData = [
+    { texture: 'planet_earth.webp', size: 120, position: new THREE.Vector3(-800, 150, -500) },
+    { texture: 'planet_mars.jpg', size: 80, position: new THREE.Vector3(950, -100, -1200) },
+    { texture: 'planet_gasgiant.jpg', size: 250, position: new THREE.Vector3(-100, 300, -2000) }
+  ];
+
+  planetData.forEach(data => {
+    const planetGeo = new THREE.SphereGeometry(data.size, 32, 32);
+    // MeshStandardMaterial, чтобы планеты реагировали на свет, выглядя объемными
+    const planetMat = new THREE.MeshStandardMaterial({
+      map: textureLoader.load(`assets/images/${data.texture}`),
+      roughness: 0.9,
+      metalness: 0.1
+    });
+    const planet = new THREE.Mesh(planetGeo, planetMat);
+    planet.position.copy(data.position);
+
+    solarSystemGroup.add(planet);
+    planets.push(planet); // Сохраняем для анимации
+  });
 }
 
 
@@ -557,6 +629,7 @@ async function init() {
   fileInput.disabled = false;
 
   createCityEnvironment();
+  createSolarSystemEnvironment();
 
   animate();
 }
@@ -1546,38 +1619,10 @@ function updateSceneColors(targetColor: THREE.Color) {
 function startEnvironmentTransition(nextEnv: EnvironmentState, duration: number) {
   const halfDuration = duration / 2;
 
-  // --- Фаза 1: Исчезновение текущего мира (первая половина гиперпрыжка) ---
-
-  // Плавно уменьшаем непрозрачность старых объектов
-  const oldGroup = (currentEnvironment === EnvironmentState.SPACE) ? spaceGroup : cityGroup;
-  // (Здесь можно использовать библиотеку для анимации типа GSAP или Tween.js, но для простоты сделаем через setTimeout)
-
-  // --- Фаза 2: В середине гиперпрыжка, когда экран самый яркий ---
   setTimeout(() => {
-    // 1. Мгновенно выключаем старое окружение
-    oldGroup.visible = false;
-
-    // 2. Мгновенно включаем новое
-    const newGroup = (nextEnv === EnvironmentState.SPACE) ? spaceGroup : cityGroup;
-    newGroup.visible = true;
-
-    // 3. МЕНЯЕМ ГЛОБАЛЬНЫЕ НАСТРОЙКИ СЦЕНЫ
-    if (nextEnv === EnvironmentState.CITY) {
-      // Темно-фиолетовый туман, который является классикой жанра
-      const fogColor = 0x1a001a;
-      scene.fog = new THREE.FogExp2(fogColor, 0.0015); // Экспоненциальный туман для лучшего эффекта
-      scene.background = new THREE.Color(fogColor); // Фон должен быть того же цвета, что и туман!
-      // ...
-    } else {
-      // Возвращаем настройки космоса
-      scene.fog = new THREE.Fog(0x000000, 10, 250);
-      scene.background = new THREE.Color(0x000000);
-    }
-
-    // 4. Обновляем текущее состояние
+    setActiveEnvironment(nextEnv);
     currentEnvironment = nextEnv;
-
-  }, halfDuration * 1000); // * 1000 для перевода в миллисекунды
+  }, halfDuration * 1000);
 
   setTimeout(() => {
     cityBackgroundSphere.visible = nextEnv === EnvironmentState.CITY;
@@ -1692,7 +1737,9 @@ function animate() {
       const gridIntensity = isSssRank ? 1.0 : 0.2 + bass * 1.5;
       (backgroundSphere.material as THREE.MeshStandardMaterial).emissiveIntensity = gridIntensity;
     }
-    scene.fog.color.copy(currentSkyColor);
+    if (scene.fog) {
+      scene.fog.color.copy(currentSkyColor);
+    }
 
     if (trackGroup) {
       const leftRail = trackGroup.getObjectByName('leftRail') as THREE.Mesh;
@@ -1720,6 +1767,11 @@ function animate() {
       cityGroup.position.z = camera.position.z;
 
       updateCityChunks();
+    } else if (currentEnvironment === EnvironmentState.SOLAR_SYSTEM) {
+      solarSystemGroup.position.copy(camera.position);
+      planets.forEach((planet, index) => {
+        planet.rotation.y += 0.0005 * (index + 1);
+      });
     }
 
     if (cityBackgroundSphere) {
@@ -1749,7 +1801,7 @@ function animate() {
       lastHyperspaceTriggerTime = audioContext.currentTime;
       hyperspaceJumpCount++;
       timeInRedZone = 0;
-      const nextEnvironment = (currentEnvironment === EnvironmentState.SPACE) ? EnvironmentState.CITY : EnvironmentState.SPACE;
+      const nextEnvironment = (currentEnvironment + 1) % 3;
       startEnvironmentTransition(nextEnvironment, hyperspaceEffect.duration);
       // isSketchEffectToggledOn = !isSketchEffectToggledOn;
       // sketchPass.enabled = isSketchEffectToggledOn;

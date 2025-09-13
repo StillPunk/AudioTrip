@@ -66,6 +66,11 @@ const SketchShader = {
   `
 };
 
+enum EnvironmentState { SPACE, CITY }
+let currentEnvironment = EnvironmentState.SPACE;
+let spaceGroup: THREE.Group;
+let cityBackgroundSphere: THREE.Mesh;
+
 // --- DOM Elements ---
 const canvas = document.getElementById('webgl-canvas') as HTMLCanvasElement;
 const fileInput = document.getElementById('audio-file-input') as HTMLInputElement;
@@ -110,6 +115,7 @@ let frequencyData: Uint8Array;
 let animationFrameId: number;
 let score = 0;
 
+let cityGroup: THREE.Group;
 let videoScreensGroup: THREE.Group;
 const videoElements: HTMLVideoElement[] = [];
 let isARankEffectActive = false;
@@ -256,6 +262,139 @@ function togglePause() {
   }
 }
 
+// --- Новые глобальные переменные ---
+const cityChunks: THREE.Group[] = [];
+const CHUNK_SIZE = 2000; // Размер одного куска города (2000x2000 юнитов)
+const NUM_CHUNKS_AXIS = 3; // Создаем сетку 3x3
+
+// --- ЗАМЕНИТЕ ВАШУ ФУНКЦИЮ createCityEnvironment НА ЭТУ ---
+function createCityEnvironment() {
+  const textureLoader = new THREE.TextureLoader();
+  const gridTexture = textureLoader.load('assets/images/grid.png');
+
+  gridTexture.wrapS = THREE.RepeatWrapping;
+  gridTexture.wrapT = THREE.RepeatWrapping;
+  gridTexture.repeat.set(20, 20); // Повторяем сетку 20x20 раз на каждом чанке
+
+  cityGroup = new THREE.Group();
+  cityGroup.visible = false;
+  scene.add(cityGroup);
+
+  const buildingCountPerChunk = 500; // Зданий на один чанк
+  const buildingGeometry = new THREE.BoxGeometry(1, 1, 1);
+  const buildingMaterial = new THREE.MeshStandardMaterial({
+    color: 0x111111,
+    roughness: 0.7
+  });
+
+  const CORRIDOR_WIDTH = 400;
+
+  // Создаем сетку чанков 3x3
+  for (let x = 0; x < NUM_CHUNKS_AXIS; x++) {
+    for (let z = 0; z < NUM_CHUNKS_AXIS; z++) {
+      const chunk = new THREE.Group();
+
+      // Рассчитываем позицию чанка в сетке
+      chunk.position.set(
+        (x - 1) * CHUNK_SIZE,
+        0,
+        (z - 1) * CHUNK_SIZE
+      );
+
+      // --- Создаем здания для этого чанка ---
+      const instancedBuildings = new THREE.InstancedMesh(buildingGeometry, buildingMaterial, buildingCountPerChunk);
+      const dummy = new THREE.Object3D();
+      for (let i = 0; i < buildingCountPerChunk; i++) {
+        let bx = (Math.random() - 0.5) * (CHUNK_SIZE - CORRIDOR_WIDTH);
+        if (bx >= 0) {
+          bx += CORRIDOR_WIDTH / 2;
+        } else {
+          bx -= CORRIDOR_WIDTH / 2;
+        }
+        const bz = (Math.random() - 0.5) * CHUNK_SIZE;
+        const height = 100 + Math.random() * 800;
+        const scaleX = 20 + Math.random() * 80;
+        const scaleZ = 20 + Math.random() * 80;
+
+        dummy.position.set(bx, height / 2 - 50, bz);
+        dummy.scale.set(scaleX, height, scaleZ);
+        dummy.updateMatrix();
+        instancedBuildings.setMatrixAt(i, dummy.matrix);
+      }
+      instancedBuildings.instanceMatrix.needsUpdate = true;
+      chunk.add(instancedBuildings);
+
+      // --- Создаем землю для этого чанка ---
+      const groundGeometry = new THREE.PlaneGeometry(CHUNK_SIZE, CHUNK_SIZE);
+      const groundMaterial = new THREE.MeshBasicMaterial({ // <<-- ВАЖНО: MeshBasicMaterial для сетки
+        map: gridTexture,
+        color: 0x6a00ff, // Цвет линий сетки
+        transparent: true,
+        blending: THREE.AdditiveBlending // Режим смешивания для красивого свечения
+      });
+      const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+      ground.rotation.x = -Math.PI / 2;
+      ground.position.y = -50;
+      chunk.add(ground);
+
+      cityGroup.add(chunk);
+      cityChunks.push(chunk);
+    }
+  }
+}
+
+function createCityBackground() {
+  const geometry = new THREE.SphereGeometry(1000, 64, 32);
+
+  const texture = new THREE.TextureLoader().load('assets/images/city.jpg');
+
+  const material = new THREE.MeshBasicMaterial({
+    map: texture,
+    side: THREE.BackSide,
+    fog: false
+  });
+
+  const sphere = new THREE.Mesh(geometry, material);
+  return sphere;
+}
+
+
+function updateCityChunks() {
+  // Этот вспомогательный объект нужен, чтобы не создавать новый вектор каждый кадр
+  const _tempVec3 = new THREE.Vector3();
+
+  // Перебираем все чанки города
+  cityChunks.forEach(chunk => {
+    // Получаем МИРОВУЮ позицию чанка (а не локальную)
+    const chunkWorldPosition = chunk.getWorldPosition(_tempVec3);
+
+    // Вычисляем расстояние от камеры до чанка
+    const distanceToChunkZ = camera.position.z - chunkWorldPosition.z;
+    const distanceToChunkX = camera.position.x - chunkWorldPosition.x;
+
+    // --- Логика "телепортации" ---
+
+    // Если чанк оказался слишком далеко позади по оси Z...
+    if (distanceToChunkZ > CHUNK_SIZE * 1.5) {
+      // ...перемещаем его на всю длину сетки (3 чанка) вперед
+      chunk.position.z -= NUM_CHUNKS_AXIS * CHUNK_SIZE;
+    }
+    // Если чанк оказался слишком далеко впереди...
+    else if (distanceToChunkZ < -CHUNK_SIZE * 1.5) {
+      // ...перемещаем его назад
+      chunk.position.z += NUM_CHUNKS_AXIS * CHUNK_SIZE;
+    }
+
+    // То же самое для оси X, на случай если трек сильно поворачивает
+    if (distanceToChunkX > CHUNK_SIZE * 1.5) {
+      chunk.position.x -= NUM_CHUNKS_AXIS * CHUNK_SIZE;
+    }
+    else if (distanceToChunkX < -CHUNK_SIZE * 1.5) {
+      chunk.position.x += NUM_CHUNKS_AXIS * CHUNK_SIZE;
+    }
+  });
+}
+
 async function init() {
   // Update UI for loading
   startPrompt.textContent = 'Loading spaceship...';
@@ -351,6 +490,15 @@ async function init() {
   sketchPass.enabled = false; // Изначально эффект выключен
   composer.addPass(sketchPass);
 
+  spaceGroup = new THREE.Group();
+  scene.add(spaceGroup);
+  spaceGroup.add(nebulaParticles);
+  spaceGroup.add(normalStarfield);
+
+  cityBackgroundSphere = createCityBackground();
+  cityBackgroundSphere.visible = false;
+  scene.add(cityBackgroundSphere);
+
   window.addEventListener('resize', onWindowResize);
   document.addEventListener('keydown', onKeyDown);
   document.addEventListener('keyup', onKeyUp);
@@ -370,6 +518,8 @@ async function init() {
   startPrompt.textContent = 'Choose a song to start your ride';
   fileLabel.classList.remove('hidden');
   fileInput.disabled = false;
+
+  createCityEnvironment();
 
   animate();
 }
@@ -1354,6 +1504,47 @@ function updateSceneColors(targetColor: THREE.Color) {
   // scene.fog.color.copy(currentColor);
 }
 
+// Новая функция
+function startEnvironmentTransition(nextEnv: EnvironmentState, duration: number) {
+  const halfDuration = duration / 2;
+
+  // --- Фаза 1: Исчезновение текущего мира (первая половина гиперпрыжка) ---
+
+  // Плавно уменьшаем непрозрачность старых объектов
+  const oldGroup = (currentEnvironment === EnvironmentState.SPACE) ? spaceGroup : cityGroup;
+  // (Здесь можно использовать библиотеку для анимации типа GSAP или Tween.js, но для простоты сделаем через setTimeout)
+
+  // --- Фаза 2: В середине гиперпрыжка, когда экран самый яркий ---
+  setTimeout(() => {
+    // 1. Мгновенно выключаем старое окружение
+    oldGroup.visible = false;
+
+    // 2. Мгновенно включаем новое
+    const newGroup = (nextEnv === EnvironmentState.SPACE) ? spaceGroup : cityGroup;
+    newGroup.visible = true;
+
+    // 3. МЕНЯЕМ ГЛОБАЛЬНЫЕ НАСТРОЙКИ СЦЕНЫ
+    if (nextEnv === EnvironmentState.CITY) {
+      // Темно-фиолетовый туман, который является классикой жанра
+      const fogColor = 0x1a001a;
+      scene.fog = new THREE.FogExp2(fogColor, 0.0015); // Экспоненциальный туман для лучшего эффекта
+      scene.background = new THREE.Color(fogColor); // Фон должен быть того же цвета, что и туман!
+      // ...
+    } else {
+      // Возвращаем настройки космоса
+      scene.fog = new THREE.Fog(0x000000, 10, 250);
+      scene.background = new THREE.Color(0x000000);
+    }
+
+    // 4. Обновляем текущее состояние
+    currentEnvironment = nextEnv;
+
+  }, halfDuration * 1000); // * 1000 для перевода в миллисекунды
+
+  setTimeout(() => {
+    cityBackgroundSphere.visible = nextEnv === EnvironmentState.CITY;
+  }, (duration / 2) * 1000);
+}
 
 const clock = new THREE.Clock();
 
@@ -1486,6 +1677,17 @@ function animate() {
       }
     }
 
+    if (currentEnvironment === EnvironmentState.CITY) {
+      cityGroup.position.x = camera.position.x;
+      cityGroup.position.z = camera.position.z;
+
+      updateCityChunks();
+    }
+
+    if (cityBackgroundSphere) {
+      cityBackgroundSphere.position.copy(camera.position);
+    }
+
     // HYPERSPACE LOGIC: Reactive trigger based on sustained time in a high-energy zone.
     const HYPERSPACE_THRESHOLD = 0.70;
     const HYPERSPACE_COOLDOWN = 40;
@@ -1509,8 +1711,10 @@ function animate() {
       lastHyperspaceTriggerTime = audioContext.currentTime;
       hyperspaceJumpCount++;
       timeInRedZone = 0;
-      isSketchEffectToggledOn = !isSketchEffectToggledOn;
-      sketchPass.enabled = isSketchEffectToggledOn;
+      const nextEnvironment = (currentEnvironment === EnvironmentState.SPACE) ? EnvironmentState.CITY : EnvironmentState.SPACE;
+      startEnvironmentTransition(nextEnvironment, hyperspaceEffect.duration);
+      // isSketchEffectToggledOn = !isSketchEffectToggledOn;
+      // sketchPass.enabled = isSketchEffectToggledOn;
     }
 
     // Dynamic FOV and Hyperspace Update
@@ -1700,18 +1904,6 @@ function endGame() {
   // if(videoScreensGroup) camera.remove(videoScreensGroup);
   isARankEffectActive = false;
 }
-
-/**
- * Создает и размещает видео-экраны вокруг камеры, создавая эффект "галереи".
- * Вызывается один раз при первом достижении ранга 'A'.
- */
-// --- ПОЛНОСТЬЮ ЗАМЕНИТЕ ЭТУ ФУНКЦИЮ ---
-
-/**
- * МОМЕНТАЛЬНО создает 3D-объекты экранов из ПРЕДЗАГРУЖЕННЫХ видео.
- * Вызывается при достижении ранга 'A'.
- */
-// --- ЗАМЕНИТЕ ЭТУ ФУНКЦИЮ ---
 
 function setupAndPositionVideoScreens() {
   if (videoElements.length === 0) {

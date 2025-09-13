@@ -106,7 +106,7 @@ const STYLE_RANKS = [
 ];
 
 // --- 3D Scene Variables ---
-let scene: THREE.Scene, camera: THREE.PerspectiveCamera, renderer: THREE.WebGLRenderer, composer: EffectComposer;
+let scene: THREE.Scene, camera: THREE.PerspectiveCamera, renderer: THREE.WebGLRenderer, composer: EffectComposer, bloomComposer: EffectComposer;
 let player: THREE.Group, trackGroup: THREE.Group, backgroundSphere: THREE.Mesh, nebulaParticles: THREE.Points,
   normalStarfield: THREE.Points, hyperspaceStreaks: THREE.LineSegments, meteorShower: any, positiveBurst: any;
 let sketchPass: ShaderPass;
@@ -185,6 +185,10 @@ for (let i = 0; i < STAR_COUNT; i++) {
   STAR_POSITIONS[i3 + 1] = (Math.random() - 0.5) * 3000;
   STAR_POSITIONS[i3 + 2] = (Math.random() - 0.5) * 4000;
 }
+
+const ENTIRE_SCENE = 0, BLOOM_SCENE = 1;
+const bloomLayer = new THREE.Layers();
+bloomLayer.set(BLOOM_SCENE);
 
 // --- Block Management ---
 const allBlocks: any[] = [];
@@ -351,7 +355,8 @@ function createCityBackground() {
   const material = new THREE.MeshBasicMaterial({
     map: texture,
     side: THREE.BackSide,
-    fog: false
+    fog: false,
+    color: 0x555555
   });
 
   const sphere = new THREE.Mesh(geometry, material);
@@ -456,6 +461,38 @@ async function init() {
   bloomPass.threshold = 0.25;
   bloomPass.strength = 1.0;
   bloomPass.radius = 0.5;
+
+  composer = new EffectComposer(renderer);
+  composer.addPass(renderScene); // Сначала рендерим основную сцену
+  composer.addPass(bloomPass);   // Затем добавляем свечение
+
+  bloomComposer = new EffectComposer(renderer);
+  bloomComposer.renderToScreen = false; // Не выводим его на экран
+  bloomComposer.addPass(renderScene);
+  bloomComposer.addPass(bloomPass);
+
+  const finalPass = new ShaderPass(
+    new THREE.ShaderMaterial({
+      uniforms: {
+        baseTexture: { value: null },
+        bloomTexture: { value: bloomComposer.renderTarget2.texture } // Результат работы bloomComposer
+      },
+      vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 ); }`,
+      fragmentShader: `
+            uniform sampler2D baseTexture;
+            uniform sampler2D bloomTexture;
+            varying vec2 vUv;
+            void main() {
+                // Смешиваем обычную сцену и карту свечения
+                gl_FragColor = ( texture2D( baseTexture, vUv ) + vec4( 1.0 ) * texture2D( bloomTexture, vUv ) );
+            }`
+    }), "baseTexture"
+  );
+  finalPass.needsSwap = true;
+
+  composer = new EffectComposer(renderer);
+  composer.addPass(renderScene);
+  composer.addPass(finalPass);
 
   storm.lightningFlash = new THREE.PointLight(0xaaccee, 0, 0, 2);
   scene.add(storm.lightningFlash);
@@ -1041,6 +1078,7 @@ function createTrackMesh(frames: any[]) {
   leftRail.name = 'leftRail';
   leftRail.userData.originalVertices = leftRail.geometry.attributes.position.clone();
   leftRail.userData.isDeformed = false;
+  leftRail.layers.enable(BLOOM_SCENE)
   group.add(leftRail);
 
   const rightRail = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(rightRailPoints), segments, 0.2, 8, false), railMat.clone());
@@ -1879,6 +1917,12 @@ function animate() {
       backgroundSphere.rotation.y += 0.0005;
     }
   }
+  renderer.setClearColor(0x000000);
+  camera.layers.set(BLOOM_SCENE);
+  bloomComposer.render();
+
+  renderer.setClearColor(0x000000);
+  camera.layers.set(ENTIRE_SCENE);
   composer.render();
 }
 

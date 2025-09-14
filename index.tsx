@@ -208,6 +208,63 @@ const wormholePool: THREE.Mesh[] = [];
 let nextWormholeSpawnTime = 0;
 let hasSketchModeBeenTriggeredThisSong = false;
 
+const soundManager = {
+  audioObjects: {} as { [key: string]: HTMLAudioElement },
+  soundsToLoad: {
+    buttonclick: 'ui_buttonclick.wav',
+    buttonhover: 'ui_buttonhover.wav',
+    characterselect: 'ui_characterselect.wav',
+    collision_color: 'collision_color.wav',
+    collision_stone: 'collision_stone.wav',
+    matchsmall: 'matchsmall.wav',
+    matchlarge: 'matchlarge.wav',
+    matchhuge: 'matchhuge.wav'
+  },
+
+  loadSounds: function() {
+    console.log("Loading sounds...");
+    for (const key in this.soundsToLoad) {
+      const fileName = this.soundsToLoad[key as keyof typeof this.soundsToLoad];
+      this.audioObjects[key] = new Audio(`assets/sounds/${fileName}`);
+      this.audioObjects[key].volume = 0.7; // <<-- Можете настроить громкость здесь
+    }
+    console.log("Sounds loaded.");
+  },
+
+  playSound: function(name: string) {
+    if (this.audioObjects[name]) {
+      // Перематываем звук в начало и воспроизводим, чтобы можно было кликать быстро
+      this.audioObjects[name].currentTime = 0;
+      this.audioObjects[name].play();
+    }
+  }
+};
+
+function prewarmEnvironment(group: THREE.Group) {
+  if (!group) return;
+
+  const instancedMeshes: THREE.InstancedMesh[] = [];
+  group.traverse((object) => {
+    if (object instanceof THREE.InstancedMesh) {
+      instancedMeshes.push(object);
+    }
+  });
+  instancedMeshes.forEach(mesh => {
+    scene.add(mesh);
+  });
+
+  // 2. Выполняем принудительную компиляцию
+  renderer.compile(scene, camera);
+
+  // 3. Возвращаем инстансы обратно в их группу
+  instancedMeshes.forEach(mesh => {
+    group.add(mesh);
+  });
+
+  // Убеждаемся, что основная группа все еще скрыта
+  group.visible = false;
+}
+
 async function loadPlayerModel(): Promise<THREE.Group> {
   const loader = new GLTFLoader();
   return new Promise((resolve, reject) => {
@@ -601,6 +658,7 @@ function checkSpecialCollisions() {
 
 async function init() {
   // Update UI for loading
+  soundManager.loadSounds();
   startPrompt.textContent = 'Loading spaceship...';
   fileLabel.classList.add('hidden');
   fileInput.disabled = true;
@@ -750,6 +808,18 @@ async function init() {
   resumeButton.addEventListener('click', togglePause);
   mainMenuButton.addEventListener('click', () => location.reload());
 
+  const uiClickableElements = document.querySelectorAll('button, .file-label');
+
+  uiClickableElements.forEach(element => {
+    element.addEventListener('click', () => {
+      soundManager.playSound('buttonclick');
+    });
+
+    element.addEventListener('mouseenter', () => {
+      soundManager.playSound('buttonhover');
+    });
+  });
+
   // Unlock UI
   startPrompt.textContent = 'Choose a song to start your ride';
   fileLabel.classList.remove('hidden');
@@ -757,6 +827,10 @@ async function init() {
 
   createCityEnvironment();
   createSolarSystemEnvironment();
+
+  prewarmEnvironment(cityGroup);
+  prewarmEnvironment(solarSystemGroup);
+  // prewarmEnvironment(spaceGroup);
 
   animate();
 }
@@ -1016,6 +1090,7 @@ function triggerLightning(frame: { point: THREE.Vector3, tangent: THREE.Vector3,
 }
 
 async function onFileSelect(event: Event) {
+  soundManager.playSound('characterselect');
   const file = (event.target as HTMLInputElement).files?.[0];
   if (!file) return;
 
@@ -1604,6 +1679,7 @@ function checkCollisions() {
       if (lastPlayerProgress < block.progress && playerProgress >= block.progress) {
         if (block.type === 'color') {
           // --- УСПЕШНОЕ ПОПАДАНИЕ ПО ЦВЕТНОМУ БЛОКУ ---
+          soundManager.playSound('collision_color');
           consecutiveHits++;
 
           // 1. Определяем текущий ранг
@@ -1626,6 +1702,7 @@ function checkCollisions() {
         } else {
           // --- СТОЛКНОВЕНИЕ С СЕРЫМ БЛОКОМ ---
           if (!isSketchModeActive) {
+            soundManager.playSound('collision_stone');
             consecutiveHits = 0; // Сбрасываем счетчик
             score = Math.max(0, score - 25);
 
@@ -1678,6 +1755,16 @@ function updateStyleUI() {
   }
 
   const rankChanged = currentRankIndex !== previousRankIndex;
+
+  if (rankChanged && currentRankIndex > previousRankIndex) {
+    if (currentRankIndex <= 1) { // Ранги D (0) и C (1)
+      soundManager.playSound('matchsmall');
+    } else if (currentRankIndex <= 3) { // Ранги B (2) и A (3)
+      soundManager.playSound('matchlarge');
+    } else { // Ранги S (4) и выше
+      soundManager.playSound('matchhuge');
+    }
+  }
 
   const isARankNow = currentRankIndex >= 3;
 

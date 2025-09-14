@@ -198,6 +198,15 @@ const allBlocks: any[] = [];
 const colorBlockPool: any[] = [];
 const greyBlockPool: any[] = [];
 
+let isSketchModeActive = false;
+let sketchModeTimer = 0;
+const SKETCH_MODE_DURATION = 10.0
+
+const specialEventObjects: any[] = [];
+const wormholePool: THREE.Mesh[] = [];
+
+let nextWormholeSpawnTime = 0;
+
 async function loadPlayerModel(): Promise<THREE.Group> {
   const loader = new GLTFLoader();
   return new Promise((resolve, reject) => {
@@ -470,6 +479,117 @@ function updateCityChunks() {
       chunk.position.x += NUM_CHUNKS_AXIS * CHUNK_SIZE;
     }
   });
+}
+
+function createWormholeMesh(isBlackHole: boolean): THREE.Mesh {
+  const geometry = new THREE.TorusGeometry(12, 3, 16, 100);
+  let material;
+
+  if (isBlackHole) {
+    // Черная дыра должна быть видна на белом фоне скетча.
+    // Сделаем ее черной с тонким, едва заметным белым контуром.
+    material = new THREE.MeshBasicMaterial({
+      color: 0x000000,
+      wireframe: true
+    });
+  } else {
+    material = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      blending: THREE.AdditiveBlending,
+      side: THREE.DoubleSide
+    });
+  }
+
+  const wormhole = new THREE.Mesh(geometry, material);
+  wormhole.layers.enable(BLOOM_SCENE);
+  return wormhole;
+}
+
+function trySpawnWhiteHole() {
+  if (!isSketchModeActive &&
+    audioContext.currentTime > nextWormholeSpawnTime) {
+
+    // Создаем новую белую дыру
+    const wormholeMesh = getFromPool(wormholePool, () => createWormholeMesh(false));
+
+    const SPAWN_TIME_AHEAD = 2.0;
+    const progress = Math.min(playerProgress + (SPAWN_TIME_AHEAD / songData.duration), 1.0);
+
+    specialEventObjects.push({
+      progress: progress,
+      type: 'white_hole',
+      mesh: wormholeMesh,
+      collected: false
+    });
+
+    // Устанавливаем время для следующего возможного спавна (случайный интервал от 20 до 40 секунд)
+    nextWormholeSpawnTime = audioContext.currentTime + 20 + Math.random() * 20;
+  }
+}
+
+function updateSpecialEvents() {
+  for (const event of specialEventObjects) {
+    if (event.collected || !event.mesh) continue;
+
+    // Позиционируем на трассе (всегда в центре)
+    const frame = getInterpolatedFrame(event.progress);
+    const point = frame.point.clone();
+    event.mesh.position.copy(point);
+
+    // Заставляем вращаться для динамики
+    event.mesh.rotation.x += 0.05;
+    event.mesh.rotation.y += 0.02;
+
+    // Ориентируем перпендикулярно трассе
+    event.mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), frame.tangent);
+
+    // Убираем, если пролетели мимо
+    if (playerProgress > event.progress + 0.01) {
+      event.collected = true;
+      recycleObject(event.mesh, wormholePool);
+    }
+  }
+}
+
+function checkSpecialCollisions() {
+  for (const event of specialEventObjects) {
+    if (event.collected) continue;
+
+    // Проверяем пересечение
+    if (playerProgress >= event.progress && lastPlayerProgress < event.progress) {
+      event.collected = true;
+      recycleObject(event.mesh, wormholePool);
+
+      if (event.type === 'white_hole') {
+        // --- АКТИВИРУЕМ РЕЖИM СКЕТЧА ---
+        isSketchModeActive = true;
+        sketchModeTimer = SKETCH_MODE_DURATION;
+        sketchPass.enabled = true;
+
+        // Создаем черную дыру для выхода в конце таймера
+        const exitProgress = playerProgress + ((SKETCH_MODE_DURATION - 1) / songData.duration);
+        const exitHoleMesh = getFromPool(wormholePool, () => createWormholeMesh(true));
+        specialEventObjects.push({
+          progress: exitProgress,
+          type: 'black_hole',
+          mesh: exitHoleMesh,
+          collected: false
+        });
+
+      } else if (event.type === 'black_hole') {
+        // --- ВЫХОДИМ ИЗ РЕЖИМА СКЕТЧА ---
+        isSketchModeActive = false;
+        sketchModeTimer = 0;
+        sketchPass.enabled = false;
+      }
+    }
+  }
+  // Очищаем массив от собранных объектов
+  for (let i = specialEventObjects.length - 1; i >= 0; i--) {
+    if (specialEventObjects[i].collected) {
+      specialEventObjects.splice(i, 1);
+    }
+  }
 }
 
 async function init() {
@@ -1280,6 +1400,7 @@ function setupAndPlayAudio(arrayBuffer: ArrayBuffer) {
     gameStarted = true;
     isPaused = false;
     backgroundSphere.visible = false;
+    nextWormholeSpawnTime = 20 + Math.random() * 20;
   }, (error) => {
     console.error("Error decoding audio data:", error);
     location.reload();
@@ -1295,12 +1416,20 @@ function getFromPool(pool: any[], factory: Function) {
 
 function recycleToPool(block: any) {
   if (block.mesh) {
-    block.mesh.visible = false;
-    scene.remove(block.mesh);
     const pool = block.type === 'color' ? colorBlockPool : greyBlockPool;
-    pool.push(block.mesh);
+    recycleObject(block.mesh, pool);
     block.mesh = null;
   }
+}
+
+function recycleObject(mesh: THREE.Object3D, pool: any[]) {
+  if (!mesh) return;
+
+  mesh.visible = false;
+  if (mesh.parent) {
+    mesh.parent.remove(mesh);
+  }
+  pool.push(mesh);
 }
 
 function createColorBlock() {
@@ -1453,8 +1582,9 @@ function checkCollisions() {
           currentRankIndex = newRankIndex;
 
           // 2. Рассчитываем очки с множителем
-          const multiplier = currentRankIndex > -1 ? STYLE_RANKS[currentRankIndex].multiplier : 1;
-          score += 10 * multiplier;
+          const baseMultiplier = currentRankIndex > -1 ? STYLE_RANKS[currentRankIndex].multiplier : 1;
+          const finalMultiplier = isSketchModeActive ? 10 : baseMultiplier;
+          score += 10 * finalMultiplier;
           triggerPositiveBurst(block.mesh.position, block.mesh.material.color);
 
         } else {
@@ -1490,6 +1620,25 @@ function checkCollisions() {
 }
 
 function updateStyleUI() {
+  if (isSketchModeActive) {
+    scoreMultiplierEl.textContent = '(x10)';
+
+    styleRankContainer.classList.add('hidden');
+
+    if (isARankEffectActive) {
+      isARankEffectActive = false;
+      updateVideoScreensVisibility(false);
+    }
+    if (storm.active) {
+      storm.active = false;
+      if (storm.lightningFlash) storm.lightningFlash.intensity = 0;
+    }
+
+    gameHud.classList.remove('style-rank-blue', 'style-rank-gold');
+
+    return;
+  }
+
   const rankChanged = currentRankIndex !== previousRankIndex;
 
   const isARankNow = currentRankIndex >= 3;
@@ -1509,14 +1658,12 @@ function updateStyleUI() {
   const isStormActiveNow = currentRankIndex >= 4; // Ранг S или выше
 
   if (isStormActiveNow && !storm.active) {
-    // Ранг достиг S, а шторм еще не активен -> включаем
     storm.active = true;
-    storm.lastFlashTime = audioContext.currentTime; // Сбрасываем таймер
-    storm.nextFlashDelay = 1 + Math.random() * 2; // Первая молния ударит скоро
+    storm.lastFlashTime = audioContext.currentTime;
+    storm.nextFlashDelay = 1 + Math.random() * 2;
   } else if (!isStormActiveNow && storm.active) {
-    // Ранг упал ниже S, а шторм активен -> выключаем
     storm.active = false;
-    if(storm.lightningFlash) storm.lightningFlash.intensity = 0; // Гасим свет
+    if (storm.lightningFlash) storm.lightningFlash.intensity = 0;
   }
 
   if (currentRankIndex === -1) {
@@ -1776,6 +1923,18 @@ function animate() {
 
     if (cityBackgroundSphere) {
       cityBackgroundSphere.position.copy(camera.position);
+    }
+
+    trySpawnWhiteHole();
+    updateSpecialEvents();
+    checkSpecialCollisions();
+
+    if (isSketchModeActive) {
+      sketchModeTimer -= deltaTime;
+      if (sketchModeTimer <= 0) {
+        isSketchModeActive = false;
+        sketchPass.enabled = false;
+      }
     }
 
     // HYPERSPACE LOGIC: Reactive trigger based on sustained time in a high-energy zone.

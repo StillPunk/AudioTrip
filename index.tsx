@@ -206,6 +206,7 @@ const specialEventObjects: any[] = [];
 const wormholePool: THREE.Mesh[] = [];
 
 let nextWormholeSpawnTime = 0;
+let hasSketchModeBeenTriggeredThisSong = false;
 
 async function loadPlayerModel(): Promise<THREE.Group> {
   const loader = new GLTFLoader();
@@ -506,8 +507,12 @@ function createWormholeMesh(isBlackHole: boolean): THREE.Mesh {
 }
 
 function trySpawnWhiteHole() {
+  const isRankHighEnough = currentRankIndex >= 4;
+
   if (!isSketchModeActive &&
-    audioContext.currentTime > nextWormholeSpawnTime) {
+    audioContext.currentTime > nextWormholeSpawnTime &&
+    isRankHighEnough &&
+    !hasSketchModeBeenTriggeredThisSong) {
 
     // Создаем новую белую дыру
     const wormholeMesh = getFromPool(wormholePool, () => createWormholeMesh(false));
@@ -565,6 +570,8 @@ function checkSpecialCollisions() {
         isSketchModeActive = true;
         sketchModeTimer = SKETCH_MODE_DURATION;
         sketchPass.enabled = true;
+
+        hasSketchModeBeenTriggeredThisSong = true;
 
         // Создаем черную дыру для выхода в конце таймера
         const exitProgress = playerProgress + ((SKETCH_MODE_DURATION - 1) / songData.duration);
@@ -1206,7 +1213,7 @@ function createTrackPath(energyMap: number[], duration: number): THREE.CatmullRo
   const climbInfluence = 3.5;
   const damping = 0.96;
   const centeringForce = 0.003;
-  const baseSegmentLengthPerSecond = 150;
+  const baseSegmentLengthPerSecond = 110;
   const timePerSegment = duration / energyMap.length;
 
   for (let i = 0; i < energyMap.length; i++) {
@@ -1302,7 +1309,7 @@ function createTrackMesh(frames: any[]) {
   roadGeo.computeVertexNormals();
 
   const roadMat = new THREE.MeshStandardMaterial({
-    side: THREE.DoubleSide, transparent: true, opacity: 0.1, metalness: 0.2, roughness: 0.8
+    side: THREE.DoubleSide, transparent: true, opacity: 0.2, metalness: 0.2, roughness: 0.8
   });
   group.add(new THREE.Mesh(roadGeo, roadMat));
 
@@ -1400,6 +1407,7 @@ function setupAndPlayAudio(arrayBuffer: ArrayBuffer) {
     gameStarted = true;
     isPaused = false;
     backgroundSphere.visible = false;
+    hasSketchModeBeenTriggeredThisSong = false;
     nextWormholeSpawnTime = 20 + Math.random() * 20;
   }, (error) => {
     console.error("Error decoding audio data:", error);
@@ -1435,22 +1443,38 @@ function recycleObject(mesh: THREE.Object3D, pool: any[]) {
 function createColorBlock() {
   const blockWidth = 1.5;
   const geometry = new RoundedBoxGeometry(blockWidth, blockWidth, blockWidth * 2, 6, 0.5);
-  const material = new THREE.MeshStandardMaterial({emissiveIntensity: 0.4});
-  return new THREE.Mesh(geometry, material);
+  const material = new THREE.MeshBasicMaterial({ fog: false });
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.layers.enable(BLOOM_SCENE);
+  return mesh;
 }
 
 function createGreyBlock() {
-  const blockWidth = 1.5;
-  const geometry = new RoundedBoxGeometry(blockWidth, blockWidth, blockWidth * 2, 6, 0.5);
-  // Give grey blocks a subtle emissive property to ensure they are always visible
-  const material = new THREE.MeshStandardMaterial({
-    color: 0x666666, // A mid-grey
-    metalness: 0.2,
-    roughness: 0.7,
-    emissive: 0xbbbbbb, // A light grey emissive color
-    emissiveIntensity: 0.25 // Subtle glow so it doesn't distract
+  // Используем геометрию "кристалла" или "шипа"
+  const geometry = new THREE.OctahedronGeometry(1.8, 0); // Радиус 1.8, без детализации
+
+  // Материал теперь будет просто черным, так как цвет мы будем задавать анимацией
+  const material = new THREE.MeshBasicMaterial({
+    color: 0x000000,
+    fog: false
   });
-  return new THREE.Mesh(geometry, material);
+
+  const mesh = new THREE.Mesh(geometry, material);
+
+  // Добавляем светящуюся "обводку" для лучшей видимости
+  const edges = new THREE.EdgesGeometry(geometry);
+  const lineMaterial = new THREE.LineBasicMaterial({
+    color: 0xffffff,
+    blending: THREE.AdditiveBlending,
+    transparent: true,
+    opacity: 0.8
+  });
+  const wireframe = new THREE.LineSegments(edges, lineMaterial);
+  wireframe.layers.enable(BLOOM_SCENE); // Заставляем светиться обводку
+
+  mesh.add(wireframe); // Добавляем обводку как дочерний объект
+
+  return mesh;
 }
 
 function pregenerateBlocks(energyMap: number[]) {
@@ -1458,17 +1482,21 @@ function pregenerateBlocks(energyMap: number[]) {
   let lastLane = 1;
   let consecutiveObstacles = 0;
 
+  const MIN_PROGRESS_DISTANCE = 0.001;
+  let lastBlockProgress = -MIN_PROGRESS_DISTANCE;
+
   for (let i = 0; i < energyMap.length; i++) {
     const energy = energyMap[i];
     const progress = i / energyMap.length;
 
-    // Spawn chance based on energy. Less blocks on calm parts.
-    const spawnChance = energy * 0.75;
+    if (progress < lastBlockProgress + MIN_PROGRESS_DISTANCE) {
+      continue;
+    }
+
+    const spawnChance = energy * 0.45;
     if (Math.random() > spawnChance) continue;
 
-    // Obstacle runs (grey blocks) are for medium-high energy.
     const isObstacleRun = energy > 0.6 && Math.random() < (energy - 0.6) * 0.7 && consecutiveObstacles < 2;
-    // Multi-blocks (full rows of color) for medium energy and up.
     const isMultiBlock = energy > 0.4 && Math.random() < (energy - 0.4);
 
 
@@ -1476,17 +1504,23 @@ function pregenerateBlocks(energyMap: number[]) {
       const openLane = Math.floor(Math.random() * NUM_LANES);
       for (let lane = 0; lane < NUM_LANES; lane++) {
         if (lane !== openLane) {
-          allBlocks.push({progress, lane, type: 'grey', mesh: null, collected: false});
+          allBlocks.push({ progress, lane, type: 'grey', mesh: null, collected: false });
         }
       }
       consecutiveObstacles++;
+      // Мы создали группу препятствий, поэтому обновляем позицию
+      lastBlockProgress = progress;
+
     } else if (isMultiBlock) {
       for (let lane = 0; lane < NUM_LANES; lane++) {
-        if (Math.random() > 0.15) { // higher chance for multi-blocks
-          allBlocks.push({progress, lane, type: 'color', mesh: null, collected: false});
+        if (Math.random() > 0.15) {
+          allBlocks.push({ progress, lane, type: 'color', mesh: null, collected: false });
         }
       }
       consecutiveObstacles = 0;
+      // Мы создали группу цветных блоков, поэтому обновляем позицию
+      lastBlockProgress = progress;
+
     } else {
       let lane;
       const laneChoice = Math.random();
@@ -1494,9 +1528,11 @@ function pregenerateBlocks(energyMap: number[]) {
       else if (laneChoice < 0.8) lane = (lastLane + 1) % NUM_LANES;
       else lane = (lastLane + NUM_LANES - 1) % NUM_LANES;
 
-      allBlocks.push({progress, lane, type: 'color', mesh: null, collected: false});
+      allBlocks.push({ progress, lane, type: 'color', mesh: null, collected: false });
       lastLane = lane;
       consecutiveObstacles = 0;
+      // Мы создали один цветной блок, поэтому обновляем позицию
+      lastBlockProgress = progress;
     }
   }
 }
@@ -1589,23 +1625,25 @@ function checkCollisions() {
 
         } else {
           // --- СТОЛКНОВЕНИЕ С СЕРЫМ БЛОКОМ ---
-          consecutiveHits = 0; // Сбрасываем счетчик
-          score = Math.max(0, score - 25);
+          if (!isSketchModeActive) {
+            consecutiveHits = 0; // Сбрасываем счетчик
+            score = Math.max(0, score - 25);
 
-          // 1. Логика понижения ранга
-          if (currentRankIndex >= 4) { // Если ранг S, SS или SSS
-            currentRankIndex = 2; // Падаем до B (индекс 2)
-          } else if (currentRankIndex > 0) { // Если C, B, A
-            currentRankIndex -= 2; // Падаем на 2 ранга
-          } else { // Если D или нет ранга
-            currentRankIndex = -1; // Полный сброс
+            // 1. Логика понижения ранга
+            if (currentRankIndex >= 4) { // Если ранг S, SS или SSS
+              currentRankIndex = 2; // Падаем до B (индекс 2)
+            } else if (currentRankIndex > 0) { // Если C, B, A
+              currentRankIndex -= 2; // Падаем на 2 ранга
+            } else { // Если D или нет ранга
+              currentRankIndex = -1; // Полный сброс
+            }
+
+            // 2. Эффекты столкновения
+            shakeTime = 0.4;
+            shakeIntensity = 0.3;
+            vignette.style.opacity = '1';
+            setTimeout(() => { vignette.style.opacity = '0'; }, 100);
           }
-
-          // 2. Эффекты столкновения
-          shakeTime = 0.4;
-          shakeIntensity = 0.3;
-          vignette.style.opacity = '1';
-          setTimeout(() => { vignette.style.opacity = '0'; }, 100);
         }
 
         // Обновляем UI после любого столкновения
@@ -2074,11 +2112,24 @@ function animate() {
       if (positiveBurst.material.opacity <= 0) positiveBurst.visible = false;
     }
 
+    const time = clock.getElapsedTime();
+
     for (const block of allBlocks) {
       if (block.mesh && block.type === 'color') {
         // Use the main scene color for blocks for consistency
-        (block.mesh.material as THREE.MeshStandardMaterial).color.copy(currentColor).multiplyScalar(0.8);
-        (block.mesh.material as THREE.MeshStandardMaterial).emissive.copy(currentColor).multiplyScalar(0.3);
+        // (block.mesh.material as THREE.MeshStandardMaterial).color.copy(currentColor).multiplyScalar(0.8);
+        // (block.mesh.material as THREE.MeshStandardMaterial).emissive.copy(currentColor).multiplyScalar(0.3);
+        (block.mesh.material as THREE.MeshBasicMaterial).color.copy(currentColor);
+      }
+
+      if (block.mesh && block.type === 'grey') {
+        // Заставляем обводку пульсировать красным цветом
+        const pulse = Math.sin(time * 10) * 0.5 + 0.5; // Значение от 0 до 1
+        const wireframe = block.mesh.children[0] as THREE.LineSegments;
+        const material = wireframe.material as THREE.LineBasicMaterial;
+
+        // Цвет пульсирует от белого до ярко-красного
+        material.color.setRGB(1, pulse, pulse);
       }
     }
 

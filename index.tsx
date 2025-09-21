@@ -1277,33 +1277,38 @@ function generateTrackFrames(curve: THREE.CatmullRomCurve3, energyMap: number[],
   return frames;
 }
 
-
 function createTrackPath(energyMap: number[], duration: number): THREE.CatmullRomCurve3 {
   const points: THREE.Vector3[] = [];
   let pos = new THREE.Vector3(0, 0, 0);
   let vel = new THREE.Vector3(0, 0, 0);
   points.push(pos.clone());
 
-  const turnInfluence = 4.0;
-  const climbInfluence = 3.5;
-  const damping = 0.96;
-  const centeringForce = 0.003;
+  // 1. Управляет ТОЛЬКО СКОРОСТЬЮ. Чем меньше, тем медленнее.
   const baseSegmentLengthPerSecond = 110;
+
+  // 2. Управляет ТОЛЬКО ФОРМОЙ ("растянутостью"). Чем больше, тем плавнее и шире повороты.
+  const PATH_SCALE = 0.55;
+
+  const turnInfluence = 4.0;    // Сила влияния на повороты
+  const climbInfluence = 3.5;   // Сила влияния на подъемы
+  const damping = 0.96;         // "Трение", гасит резкие изменения
+  const centeringForce = 0.003; // Сила, возвращающая трек к центру
+
   const timePerSegment = duration / energyMap.length;
 
   for (let i = 0; i < energyMap.length; i++) {
     const energy = energyMap[i];
 
-    // Speed multiplier: Slower on calm parts, much faster on intense parts
-    const speedMultiplier = 0.5 + energy * 2.5; // Range from 0.5x to 3.0x
+    // Расчет скорости (длины сегмента по оси Z)
+    const speedMultiplier = 0.5 + energy * 2.5;
     const segmentLength = baseSegmentLengthPerSecond * timePerSegment * speedMultiplier;
 
-    // Path variation (turns, climbs) multiplier.
-    // More sensitive to make calm parts straighter.
+    // Расчет "эффектности" (чтобы на тихих участках трек был прямее)
     const effectMultiplier = Math.max(0, (energy - 0.3) / 0.6);
 
-    const turnForce = Math.sin(i * 0.15) * energy * turnInfluence * effectMultiplier;
-    const climbForce = (energy - 0.2) * climbInfluence * effectMultiplier;
+    // Расчет сил, влияющих на форму, с учетом нового масштаба
+    const turnForce = Math.sin(i * 0.15) * energy * turnInfluence * effectMultiplier * PATH_SCALE;
+    const climbForce = (energy - 0.2) * climbInfluence * effectMultiplier * PATH_SCALE;
 
     const centerPullX = -pos.x * centeringForce;
     const centerPullY = -pos.y * centeringForce;
@@ -1312,8 +1317,11 @@ function createTrackPath(energyMap: number[], duration: number): THREE.CatmullRo
     vel.y += climbForce + centerPullY;
     vel.multiplyScalar(damping);
 
-    pos.x += vel.x;
-    pos.y += vel.y;
+    // Применяем скорость к координатам X и Y с учетом нового масштаба
+    pos.x += vel.x * PATH_SCALE;
+    pos.y += vel.y * PATH_SCALE;
+
+    // Движение вперед по оси Z остается неизменным (оно определяет скорость)
     pos.z -= segmentLength;
 
     points.push(pos.clone());
@@ -1384,7 +1392,7 @@ function createTrackMesh(frames: any[]) {
   roadGeo.computeVertexNormals();
 
   const roadMat = new THREE.MeshStandardMaterial({
-    side: THREE.DoubleSide, transparent: true, opacity: 0.2, metalness: 0.2, roughness: 0.8
+    side: THREE.DoubleSide, transparent: true, opacity: 0.95, metalness: 0.2, roughness: 0.8, color: 0x000000, fog: false
   });
   group.add(new THREE.Mesh(roadGeo, roadMat));
 
@@ -1525,31 +1533,38 @@ function createColorBlock() {
 }
 
 function createGreyBlock() {
-  // Используем геометрию "кристалла" или "шипа"
-  const geometry = new THREE.OctahedronGeometry(1.8, 0); // Радиус 1.8, без детализации
-
-  // Материал теперь будет просто черным, так как цвет мы будем задавать анимацией
-  const material = new THREE.MeshBasicMaterial({
-    color: 0x000000,
+  const blockWidth = 1.5;
+  const geometry = new RoundedBoxGeometry(blockWidth, blockWidth, blockWidth * 2, 6, 0.5);
+  const material = new THREE.MeshStandardMaterial({
+    color: 0x959595,
+    // roughness: 0.8,
+    metalness: 0.1,
     fog: false
   });
 
+  // 3. Создаем меш. Никакой обводки и свечения (bloom) больше нет.
   const mesh = new THREE.Mesh(geometry, material);
 
-  // Добавляем светящуюся "обводку" для лучшей видимости
-  const edges = new THREE.EdgesGeometry(geometry);
-  const lineMaterial = new THREE.LineBasicMaterial({
-    color: 0xffffff,
-    blending: THREE.AdditiveBlending,
-    transparent: true,
-    opacity: 0.8
-  });
-  const wireframe = new THREE.LineSegments(edges, lineMaterial);
-  wireframe.layers.enable(BLOOM_SCENE); // Заставляем светиться обводку
-
-  mesh.add(wireframe); // Добавляем обводку как дочерний объект
-
   return mesh;
+}
+
+const MIN_BLOCK_SPEED_FACTOR = -0.2;
+const MAX_BLOCK_SPEED_FACTOR = 0.9;
+
+function updateBlockMovement(deltaTime: number, currentEnergy: number) {
+  const playerProgressPerSecond = 1.0 / songData.duration;
+
+  const playerProgressThisFrame = playerProgressPerSecond * deltaTime;
+
+  const blockSpeedFactor = THREE.MathUtils.lerp(MAX_BLOCK_SPEED_FACTOR, MIN_BLOCK_SPEED_FACTOR, currentEnergy);
+
+  const blockProgressThisFrame = playerProgressThisFrame * blockSpeedFactor;
+
+  for (const block of allBlocks) {
+    if (!block.collected) {
+      block.progress += blockProgressThisFrame;
+    }
+  }
 }
 
 function pregenerateBlocks(energyMap: number[]) {
@@ -1557,23 +1572,24 @@ function pregenerateBlocks(energyMap: number[]) {
   let lastLane = 1;
   let consecutiveObstacles = 0;
 
-  const MIN_PROGRESS_DISTANCE = 0.001;
-  let lastBlockProgress = -MIN_PROGRESS_DISTANCE;
+  const BLOCK_SPAWN_TIME_AHEAD = 0.5;
+  let lastBlockProgress = -1;
 
   for (let i = 0; i < energyMap.length; i++) {
     const energy = energyMap[i];
-    const progress = i / energyMap.length;
 
-    if (progress < lastBlockProgress + MIN_PROGRESS_DISTANCE) {
+    const spawnChance = energy * 0.5;
+    if (Math.random() > spawnChance) {
       continue;
     }
 
-    const spawnChance = energy * 0.45;
-    if (Math.random() > spawnChance) continue;
+    const timeAtThisEnergyStep = i * (songData.duration / energyMap.length);
+    const progress = (timeAtThisEnergyStep + BLOCK_SPAWN_TIME_AHEAD) / songData.duration;
+
+    if (progress >= 1.0) continue;
 
     const isObstacleRun = energy > 0.6 && Math.random() < (energy - 0.6) * 0.7 && consecutiveObstacles < 2;
     const isMultiBlock = energy > 0.4 && Math.random() < (energy - 0.4);
-
 
     if (isObstacleRun) {
       const openLane = Math.floor(Math.random() * NUM_LANES);
@@ -1583,17 +1599,34 @@ function pregenerateBlocks(energyMap: number[]) {
         }
       }
       consecutiveObstacles++;
-      // Мы создали группу препятствий, поэтому обновляем позицию
       lastBlockProgress = progress;
 
     } else if (isMultiBlock) {
-      for (let lane = 0; lane < NUM_LANES; lane++) {
-        if (Math.random() > 0.15) {
-          allBlocks.push({ progress, lane, type: 'color', mesh: null, collected: false });
-        }
+      // --- ИСПРАВЛЕННАЯ ЛОГИКА ЗДЕСЬ ---
+
+      // 1. Решаем, сколько блоков мы хотим создать: один или два.
+      // Это создает больше разнообразия, чем всегда создавать по два.
+      const numBlocksToSpawn = Math.random() < 0.5 ? 1 : 2;
+
+      // 2. Создаем массив со всеми доступными полосами.
+      const availableLanes = [0, 1, 2];
+
+      // 3. "Тасуем" массив полос, чтобы выбор был случайным.
+      // Это предотвратит появление блоков чаще на левых полосах.
+      for (let i = availableLanes.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [availableLanes[i], availableLanes[j]] = [availableLanes[j], availableLanes[i]];
       }
+
+      // 4. Создаем блоки в выбранных случайных полосах.
+      for (let i = 0; i < numBlocksToSpawn; i++) {
+        const lane = availableLanes[i];
+        allBlocks.push({ progress, lane, type: 'color', mesh: null, collected: false });
+      }
+
+      // ------------------------------------
+
       consecutiveObstacles = 0;
-      // Мы создали группу цветных блоков, поэтому обновляем позицию
       lastBlockProgress = progress;
 
     } else {
@@ -1606,7 +1639,6 @@ function pregenerateBlocks(energyMap: number[]) {
       allBlocks.push({ progress, lane, type: 'color', mesh: null, collected: false });
       lastLane = lane;
       consecutiveObstacles = 0;
-      // Мы создали один цветной блок, поэтому обновляем позицию
       lastBlockProgress = progress;
     }
   }
@@ -1663,7 +1695,11 @@ function updateBlocks() {
     const frame = getInterpolatedFrame(block.progress);
 
     const point = frame.point.clone();
-    point.add(frame.binormal.clone().multiplyScalar(LANE_POSITIONS[block.lane]));
+
+    const horizontalOffset = frame.binormal.clone().multiplyScalar(LANE_POSITIONS[block.lane]);
+    const verticalOffset = frame.normal.clone().multiplyScalar(0.8);
+    point.add(horizontalOffset).add(verticalOffset);
+
     block.mesh.position.copy(point);
 
     rotationMatrix.makeBasis(frame.tangent, frame.normal, frame.binormal);
@@ -1916,6 +1952,8 @@ function animate() {
 
     // Use a lerped energy for smooth color and effect transitions
     lerpedEnergy = THREE.MathUtils.lerp(lerpedEnergy, currentEnergy, 0.05);
+
+    updateBlockMovement(deltaTime, currentEnergy);
 
     analyser.getByteFrequencyData(frequencyData);
     const bass = (frequencyData[1] + frequencyData[2]) / 2 / 255;
@@ -2207,16 +2245,6 @@ function animate() {
         // (block.mesh.material as THREE.MeshStandardMaterial).color.copy(currentColor).multiplyScalar(0.8);
         // (block.mesh.material as THREE.MeshStandardMaterial).emissive.copy(currentColor).multiplyScalar(0.3);
         (block.mesh.material as THREE.MeshBasicMaterial).color.copy(currentColor);
-      }
-
-      if (block.mesh && block.type === 'grey') {
-        // Заставляем обводку пульсировать красным цветом
-        const pulse = Math.sin(time * 10) * 0.5 + 0.5; // Значение от 0 до 1
-        const wireframe = block.mesh.children[0] as THREE.LineSegments;
-        const material = wireframe.material as THREE.LineBasicMaterial;
-
-        // Цвет пульсирует от белого до ярко-красного
-        material.color.setRGB(1, pulse, pulse);
       }
     }
 

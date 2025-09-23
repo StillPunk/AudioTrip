@@ -208,6 +208,15 @@ const wormholePool: THREE.Mesh[] = [];
 let nextWormholeSpawnTime = 0;
 let hasSketchModeBeenTriggeredThisSong = false;
 
+let circularFramesGroup: THREE.Group;
+let tunnelGroup: THREE.Group; // Эта группа теперь будет содержать отдельные сегменты
+const circularFrames: any[] = [];
+const tunnels: any[] = []; // Этот массив теперь будет хранить инфо о СЕГМЕНТАХ
+const FRAME_POOL_SIZE = 30;
+const framePool: THREE.Mesh[] = [];
+const TUNNEL_SEGMENT_POOL_SIZE = 50; // Увеличиваем пул, так как сегментов много
+const tunnelSegmentPool: THREE.Mesh[] = [];
+
 const soundManager = {
   audioObjects: {} as { [key: string]: HTMLAudioElement },
   soundsToLoad: {
@@ -263,6 +272,143 @@ function prewarmEnvironment(group: THREE.Group) {
 
   // Убеждаемся, что основная группа все еще скрыта
   group.visible = false;
+}
+
+function createTunnelSegmentMesh(): THREE.Mesh {
+  const tunnelRadius = 20;   // Радиус тоннеля
+  const segmentLength = 4;   // Длина одного маленького сегмента
+
+  const segmentGeometry = new THREE.CylinderGeometry(tunnelRadius, tunnelRadius, segmentLength, 32, 1, true);
+
+  // Этот материал не реагирует на свет и не создает тени или блики на стыках.
+  // Он просто рисует сплошной, ровный цвет. Идеально для нашей задачи.
+  const segmentMaterial = new THREE.MeshBasicMaterial({
+    color: 0x00ff00,           // Цвет будет меняться динамически
+    side: THREE.BackSide,      // Рендерим внутреннюю поверхность
+    toneMapped: false          // Помогает свечению быть ярче
+  });
+
+  const segment = new THREE.Mesh(segmentGeometry, segmentMaterial);
+
+  // Включаем свечение для всего объекта
+  segment.layers.enable(BLOOM_SCENE);
+
+  return segment;
+}
+
+function createCircularFrameMesh(): THREE.Mesh {
+  const frameGeometry = new THREE.TorusGeometry(18, 0.5, 16, 100); // Геометрия кольца
+  const frameMaterial = new THREE.MeshStandardMaterial({
+    color: 0x00ff00, // Начальный цвет, будет меняться
+    emissive: 0x00ff00, // Этот цвет будет светиться
+    emissiveIntensity: 1.5,
+    metalness: 0.5,
+    roughness: 0.3,
+  });
+  const frame = new THREE.Mesh(frameGeometry, frameMaterial);
+  frame.layers.enable(BLOOM_SCENE); // Включаем для эффекта свечения (bloom)
+  return frame;
+}
+
+// Возвращаем функцию создания тоннеля
+function createTunnelMesh(): THREE.Group {
+  const tunnel = new THREE.Group();
+  const tunnelSegments = 10; // Тоннель будет состоять из 10 сегментов
+  const segmentLength = 20;  // Длина каждого сегмента
+  const tunnelRadius = 20;   // Радиус тоннеля
+
+  // Геометрия для стен тоннеля
+  const segmentGeometry = new THREE.CylinderGeometry(tunnelRadius, tunnelRadius, segmentLength, 32, 1, true);
+  const segmentMaterial = new THREE.MeshStandardMaterial({
+    color: 0x1a1a1a,
+    side: THREE.BackSide, // Рендерим внутреннюю часть цилиндра
+    roughness: 0.8
+  });
+
+  // Геометрия для светящихся колец
+  const ringGeometry = new THREE.TorusGeometry(tunnelRadius, 0.3, 16, 100);
+  const ringMaterial = new THREE.MeshStandardMaterial({
+    color: 0x00ff00,
+    emissive: 0x00ff00,
+    emissiveIntensity: 2.0
+  });
+
+  // Создаем сегменты и кольца в цикле
+  for (let i = 0; i < tunnelSegments; i++) {
+    const segment = new THREE.Mesh(segmentGeometry, segmentMaterial);
+    segment.position.z = -i * segmentLength;
+    tunnel.add(segment);
+
+    const ring = new THREE.Mesh(ringGeometry, ringMaterial);
+    ring.position.z = -i * segmentLength - segmentLength / 2;
+    ring.rotation.x = Math.PI / 2;
+    ring.layers.enable(BLOOM_SCENE);
+    tunnel.add(ring);
+  }
+  return tunnel;
+}
+
+function pregenerateEnvironmentElements(energyMap: number[], duration: number) {
+  circularFrames.length = 0;
+  const frameInterval = 0.01;
+  for (let progress = 0; progress < 1.0; progress += frameInterval) {
+    circularFrames.push({ progress: progress, mesh: null });
+  }
+
+  tunnels.length = 0;
+
+  const tunnelLength = 0.05;
+  // Задаем случайную точку старта в середине трека (между 45% и 55%)
+  const startProgress = 0.45 + Math.random() * 0.1;
+  const endProgress = startProgress + tunnelLength;
+
+  // Добавляем в массив единственный объект тоннеля
+  tunnels.push({
+    startProgress: startProgress,
+    endProgress: endProgress
+  });
+}
+
+function generateTunnels() {
+  // Очищаем старые тоннели, если они были
+  while(tunnelGroup.children.length > 0){
+    tunnelGroup.remove(tunnelGroup.children[0]);
+  }
+
+  const tunnelMaterial = new THREE.MeshBasicMaterial({
+    side: THREE.BackSide, // Рендерим внутреннюю часть
+    toneMapped: false,
+    transparent: true,
+    opacity: 0.35
+  });
+
+  // Проходим по всем запланированным тоннелям
+  for (const tunnelData of tunnels) {
+    // 1. Вырезаем нужный кусок пути из общего трека
+    const totalFrames = trackFrames.length - 1;
+    const startIndex = Math.floor(tunnelData.startProgress * totalFrames);
+    const endIndex = Math.ceil(tunnelData.endProgress * totalFrames);
+    const tunnelPathPoints = trackFrames.slice(startIndex, endIndex).map(f => f.point);
+
+    if (tunnelPathPoints.length < 2) continue; // Пропускаем, если точек для пути нет
+
+    // 2. Создаем кривую ТОЛЬКО для этого тоннеля
+    const tunnelCurve = new THREE.CatmullRomCurve3(tunnelPathPoints);
+
+    // 3. Создаем ЕДИНУЮ БЕСШОВНУЮ ТРУБУ по этой кривой
+    const tunnelGeometry = new THREE.TubeGeometry(
+      tunnelCurve,
+      tunnelPathPoints.length * 2, // Сегменты вдоль
+      48,                        // Радиус
+      16,                        // Сегменты по радиусу
+      false                      // Не замкнутый
+    );
+
+    // 4. Создаем цельный объект и добавляем его
+    const tunnelMesh = new THREE.Mesh(tunnelGeometry, tunnelMaterial.clone());
+    tunnelMesh.layers.enable(BLOOM_SCENE); // Включаем свечение для всей трубы
+    tunnelGroup.add(tunnelMesh);
+  }
 }
 
 async function loadPlayerModel(): Promise<THREE.Group> {
@@ -789,6 +935,20 @@ async function init() {
   spaceGroup.add(nebulaParticles);
   spaceGroup.add(normalStarfield);
 
+  circularFramesGroup = new THREE.Group();
+  scene.add(circularFramesGroup);
+
+  tunnelGroup = new THREE.Group();
+  scene.add(tunnelGroup);
+
+  for (let i = 0; i < FRAME_POOL_SIZE; i++) {
+    framePool.push(createCircularFrameMesh());
+  }
+  // Создаем пул для СЕГМЕНТОВ тоннеля
+  for (let i = 0; i < TUNNEL_SEGMENT_POOL_SIZE; i++) {
+    tunnelSegmentPool.push(createTunnelSegmentMesh());
+  }
+
   cityBackgroundSphere = createCityBackground();
   cityBackgroundSphere.visible = false;
   scene.add(cityBackgroundSphere);
@@ -1192,6 +1352,40 @@ function smoothArray(data: number[], windowSize: number): number[] {
   return smoothed;
 }
 
+function updateEnvironmentElements() {
+  const activationZone = playerProgress + BLOCK_VIEW_DISTANCE;
+  const deactivationZone = playerProgress - 0.02;
+
+  // Обновление круглых рамок (работает правильно)
+  for (const frameObj of circularFrames) {
+    if (!frameObj.mesh && frameObj.progress > playerProgress && frameObj.progress < activationZone) {
+      const frameMesh = getFromPool(framePool, createCircularFrameMesh);
+      if (frameMesh) {
+        frameObj.mesh = frameMesh;
+        circularFramesGroup.add(frameObj.mesh);
+      }
+    }
+    if (frameObj.mesh && frameObj.progress < deactivationZone) {
+      recycleObject(frameObj.mesh, framePool);
+      frameObj.mesh = null;
+    }
+    if (frameObj.mesh) {
+      const frame = getInterpolatedFrame(frameObj.progress);
+      frameObj.mesh.position.copy(frame.point);
+      frameObj.mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), frame.tangent);
+      const material = frameObj.mesh.material as THREE.MeshStandardMaterial;
+      material.color.copy(currentColor);
+      material.emissive.copy(currentColor);
+    }
+  }
+
+  // --- ОБНОВЛЕНИЕ СЕГМЕНТОВ ТОННЕЛЯ (теперь работает как рамки) ---
+  for (const tunnelMesh of tunnelGroup.children) {
+    const material = (tunnelMesh as THREE.Mesh).material as THREE.MeshBasicMaterial;
+    material.color.copy(currentColor);
+  }
+}
+
 async function analyzeAudioAndGenerateTrack(arrayBuffer: ArrayBuffer) {
   const audioCtx = new (window.OfflineAudioContext || (window as any).webkitOfflineAudioContext)(1, arrayBuffer.byteLength, 44100);
   const buffer = await audioCtx.decodeAudioData(arrayBuffer);
@@ -1223,10 +1417,12 @@ async function analyzeAudioAndGenerateTrack(arrayBuffer: ArrayBuffer) {
   trackFrames = generateTrackFrames(trackCurve, smoothedEnergyMap, trackSegments);
 
   pregenerateBlocks(smoothedEnergyMap);
+  pregenerateEnvironmentElements(smoothedEnergyMap, duration);
 
   if (trackGroup) scene.remove(trackGroup);
   trackGroup = createTrackMesh(trackFrames);
   scene.add(trackGroup);
+  generateTunnels();
 }
 
 function generateTrackFrames(curve: THREE.CatmullRomCurve3, energyMap: number[], segments: number) {
@@ -1548,7 +1744,7 @@ function createGreyBlock() {
   return mesh;
 }
 
-const MIN_BLOCK_SPEED_FACTOR = -0.2;
+const MIN_BLOCK_SPEED_FACTOR = 0.2;
 const MAX_BLOCK_SPEED_FACTOR = 0.9;
 
 function updateBlockMovement(deltaTime: number, currentEnergy: number) {
@@ -2251,6 +2447,7 @@ function animate() {
     updateSceneColors(getTargetColor(lerpedEnergy));
     updateBlocks();
     checkCollisions();
+    updateEnvironmentElements();
 
     if (isARankEffectActive) {
       updateVideoScreensPosition();

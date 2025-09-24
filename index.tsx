@@ -564,29 +564,22 @@ function createCityEnvironment() {
 }
 
 function setActiveEnvironment(env: EnvironmentState) {
-  if (spaceGroup) spaceGroup.visible = false;
-  if (cityGroup) cityGroup.visible = false;
-  if (solarSystemGroup) solarSystemGroup.visible = false;
-
-  if (cityBackgroundSphere) cityBackgroundSphere.visible = false;
+  // Эта функция теперь меняет ТОЛЬКО фон и туман.
+  // Она больше НЕ включает видимость тяжелых объектов.
 
   if (env === EnvironmentState.SPACE) {
-    if (spaceGroup) spaceGroup.visible = true;
-
+    if (spaceGroup) spaceGroup.visible = true; // Космос (звезды-точки) "дешевый", его можно.
     scene.fog = new THREE.Fog(0x000000, 10, 250);
     scene.background = new THREE.Color(0x000000);
 
   } else if (env === EnvironmentState.CITY) {
-    if (cityGroup) cityGroup.visible = true;
-    if (cityBackgroundSphere) cityBackgroundSphere.visible = true;
-
+    // if (cityBackgroundSphere) cityBackgroundSphere.visible = true; // <<< УБРАНО
     const fogColor = 0x1a001a;
     scene.fog = new THREE.FogExp2(fogColor, 0.0015);
     scene.background = new THREE.Color(fogColor);
 
   } else if (env === EnvironmentState.SOLAR_SYSTEM) {
-    if (solarSystemGroup) solarSystemGroup.visible = true;
-
+    // Логика для включения skySphere отсюда тоже УБРАНА
     scene.fog = null;
     scene.background = new THREE.Color(0x000000);
   }
@@ -2119,17 +2112,16 @@ function updateSceneColors(targetColor: THREE.Color) {
   // scene.fog.color.copy(currentColor);
 }
 
-// Новая функция
 function startEnvironmentTransition(nextEnv: EnvironmentState, duration: number) {
-  const halfDuration = duration / 2;
+  // В самом начале перехода скрываем ВСЕ "тяжелые" группы и сферы
+  if (cityGroup) cityGroup.visible = false;
+  if (solarSystemGroup) solarSystemGroup.visible = false;
+  if (cityBackgroundSphere) cityBackgroundSphere.visible = false; // <<< Добавлено
 
+  // В середине перехода меняем только "дешевые" вещи: фон и туман
   setTimeout(() => {
     setActiveEnvironment(nextEnv);
     currentEnvironment = nextEnv;
-  }, halfDuration * 1000);
-
-  setTimeout(() => {
-    cityBackgroundSphere.visible = nextEnv === EnvironmentState.CITY;
   }, (duration / 2) * 1000);
 }
 
@@ -2372,6 +2364,13 @@ function animate() {
 
       if (hyperspaceEffect.timer <= 0) {
         hyperspaceEffect.active = false;
+
+        if (currentEnvironment === EnvironmentState.CITY) {
+          if (cityGroup) cityGroup.visible = true;
+          if (cityBackgroundSphere) cityBackgroundSphere.visible = true;
+        } else if (currentEnvironment === EnvironmentState.SOLAR_SYSTEM) {
+          if (solarSystemGroup) solarSystemGroup.visible = true;
+        }
       }
     } else {
       // Smoothly transition back to normal state

@@ -190,6 +190,7 @@ for (let i = 0; i < STAR_COUNT; i++) {
   STAR_POSITIONS[i3 + 2] = (Math.random() - 0.5) * 4000;
 }
 
+let fadeOutPlane: THREE.Mesh;
 const ENTIRE_SCENE = 0, BLOOM_SCENE = 1;
 const bloomLayer = new THREE.Layers();
 bloomLayer.set(BLOOM_SCENE);
@@ -893,6 +894,17 @@ async function init() {
   composer = new EffectComposer(renderer);
   composer.addPass(renderScene);
   composer.addPass(finalPass);
+
+  const fadeGeometry = new THREE.PlaneGeometry(2, 2);
+  const fadeMaterial = new THREE.MeshBasicMaterial({
+    color: 0x000000,
+    transparent: true,
+    opacity: 0,
+    depthTest: false
+  });
+  fadeOutPlane = new THREE.Mesh(fadeGeometry, fadeMaterial);
+  fadeOutPlane.renderOrder = 999;
+  scene.add(fadeOutPlane);
 
   storm.lightningFlash = new THREE.PointLight(0xaaccee, 0, 0, 2);
   scene.add(storm.lightningFlash);
@@ -1662,7 +1674,9 @@ function setupAndPlayAudio(arrayBuffer: ArrayBuffer) {
     analyser.connect(audioContext.destination);
     source.start(0);
     source.onended = endGame;
-
+    if (fadeOutPlane) {
+      (fadeOutPlane.material as THREE.MeshBasicMaterial).opacity = 0;
+    }
     if (player) player.visible = true;
 
     loadingScreen.classList.add('hidden');
@@ -2305,6 +2319,24 @@ function animate() {
       if (cityFadeIn.progress >= 1.0) {
         cityFadeIn.active = false;
       }
+    }
+
+    const FADE_START_TIME = songData.duration - 3; // Начать затухание за 3 секунды до конца
+    if (audioContext.currentTime > FADE_START_TIME) {
+      const timeIntoFade = audioContext.currentTime - FADE_START_TIME;
+      const fadeDuration = songData.duration - FADE_START_TIME;
+      const fadeProgress = Math.min(timeIntoFade / fadeDuration, 1.0);
+
+      // Обновляем прозрачность плоскости
+      (fadeOutPlane.material as THREE.MeshBasicMaterial).opacity = fadeProgress;
+    }
+
+    // Позиционируем плоскость прямо перед камерой
+    if (fadeOutPlane) {
+      fadeOutPlane.position.copy(camera.position);
+      fadeOutPlane.quaternion.copy(camera.quaternion);
+      // Смещаем немного вперед, чтобы она была видна
+      fadeOutPlane.translateZ(-0.11);
     }
 
     // HYPERSPACE LOGIC: Reactive trigger based on sustained time in a high-energy zone.

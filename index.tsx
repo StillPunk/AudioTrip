@@ -119,6 +119,7 @@ let animationFrameId: number;
 let score = 0;
 
 let cityGroup: THREE.Group;
+let buildingMaterial: THREE.Material;
 let videoScreensGroup: THREE.Group;
 const videoElements: HTMLVideoElement[] = [];
 let isARankEffectActive = false;
@@ -216,6 +217,7 @@ const FRAME_POOL_SIZE = 30;
 const framePool: THREE.Mesh[] = [];
 const TUNNEL_SEGMENT_POOL_SIZE = 50; // Увеличиваем пул, так как сегментов много
 const tunnelSegmentPool: THREE.Mesh[] = [];
+let cityFadeIn = { active: false, progress: 0, duration: 1.5 };
 
 const soundManager = {
   audioObjects: {} as { [key: string]: HTMLAudioElement },
@@ -502,9 +504,11 @@ function createCityEnvironment() {
 
   const buildingCountPerChunk = 500; // Зданий на один чанк
   const buildingGeometry = new THREE.BoxGeometry(1, 1, 1);
-  const buildingMaterial = new THREE.MeshStandardMaterial({
+  buildingMaterial = new THREE.MeshStandardMaterial({
     color: 0x111111,
-    roughness: 0.7
+    roughness: 0.7,
+    transparent: true,
+    opacity: 0
   });
 
   const CORRIDOR_WIDTH = 400;
@@ -1723,7 +1727,7 @@ function createColorBlock() {
 
 function createGreyBlock() {
   const blockWidth = 1.5;
-  const geometry = new RoundedBoxGeometry(blockWidth, blockWidth, blockWidth * 2, 6, 0.5);
+  const geometry = new RoundedBoxGeometry(blockWidth, blockWidth * 2, blockWidth * 2, 6, 0.5);
   const material = new THREE.MeshStandardMaterial({
     color: 0x959595,
     // roughness: 0.8,
@@ -1737,8 +1741,8 @@ function createGreyBlock() {
   return mesh;
 }
 
-const MIN_BLOCK_SPEED_FACTOR = 0.2;
-const MAX_BLOCK_SPEED_FACTOR = 0.9;
+const MIN_BLOCK_SPEED_FACTOR = -0.1;
+const MAX_BLOCK_SPEED_FACTOR = 0.8;
 
 function updateBlockMovement(deltaTime: number, currentEnergy: number) {
   const playerProgressPerSecond = 1.0 / songData.duration;
@@ -2288,6 +2292,21 @@ function animate() {
       }
     }
 
+    if (cityFadeIn.active) {
+      cityFadeIn.progress += deltaTime / cityFadeIn.duration;
+      const currentOpacity = Math.min(cityFadeIn.progress, 1.0);
+
+      // Напрямую меняем прозрачность ОДНОГО материала, который используют ВСЕ здания
+      if (buildingMaterial) {
+        (buildingMaterial as THREE.Material).opacity = currentOpacity;
+      }
+
+      // Когда анимация завершена, отключаем ее
+      if (cityFadeIn.progress >= 1.0) {
+        cityFadeIn.active = false;
+      }
+    }
+
     // HYPERSPACE LOGIC: Reactive trigger based on sustained time in a high-energy zone.
     const HYPERSPACE_THRESHOLD = 0.70;
     const HYPERSPACE_COOLDOWN = 40;
@@ -2368,6 +2387,10 @@ function animate() {
         if (currentEnvironment === EnvironmentState.CITY) {
           if (cityGroup) cityGroup.visible = true;
           if (cityBackgroundSphere) cityBackgroundSphere.visible = true;
+
+          cityFadeIn.active = true;
+          cityFadeIn.progress = 0;
+
         } else if (currentEnvironment === EnvironmentState.SOLAR_SYSTEM) {
           if (solarSystemGroup) solarSystemGroup.visible = true;
         }

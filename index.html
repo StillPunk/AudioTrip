@@ -22,8 +22,20 @@
 
   <div id="start-screen">
     <h1>AudioSurf</h1>
-    <p id="start-prompt">Choose a song to start your ride</p>
-    <label for="audio-file-input" class="file-label" id="file-label">Select Audio File</label>
+    <p id="start-prompt">
+      Enter a song to start your ride
+      <br>
+      <small>(VPN may be required)</small>
+    </p>
+
+    <div id="search-container">
+      <input type="text" id="song-search-input" placeholder="Artist - Song Title..." autocomplete="off">
+      <div id="autocomplete-results" class="hidden"></div>
+    </div>
+
+    <p class="or-separator">OR</p>
+
+    <label for="audio-file-input" class="file-label" id="file-label">Select Local Audio File</label>
     <input type="file" id="audio-file-input" accept="*"/>
   </div>
 

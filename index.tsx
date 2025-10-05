@@ -97,6 +97,8 @@ const styleRankContainer = document.getElementById('style-rank-container')!;
 const rankImage = document.getElementById('rank-image') as HTMLImageElement;
 const progressBarFill = document.getElementById('progress-bar-fill') as HTMLElement;
 const scoreMultiplierEl = document.getElementById('score-multiplier')!;
+const searchInput = document.getElementById('song-search-input') as HTMLInputElement;
+const autocompleteResults = document.getElementById('autocomplete-results')!;
 
 const STYLE_RANKS = [
   { name: 'Dismal', rank: 'D', hitsNeeded: 5, multiplier: 2, image: 'assets/images/rank_d.png' },
@@ -989,6 +991,14 @@ async function init() {
     });
   });
 
+  searchInput.addEventListener('input', onSearchInput);
+
+  document.addEventListener('click', (e) => {
+    if (e.target !== searchInput) {
+      autocompleteResults.classList.add('hidden');
+    }
+  });
+
   // Unlock UI
   startPrompt.textContent = 'Choose a song to start your ride';
   fileLabel.classList.remove('hidden');
@@ -1345,6 +1355,79 @@ async function onFileSelect(event: Event) {
   }
 
   analyzeAndPlayAudio(file);
+}
+
+let searchTimeout: number;
+function onSearchInput() {
+  clearTimeout(searchTimeout);
+  const query = searchInput.value;
+
+  if (query.length < 3) {
+    autocompleteResults.classList.add('hidden');
+    return;
+  }
+
+  searchTimeout = window.setTimeout(async () => {
+    try {
+      const response = await fetch(`http://localhost:3001/autocomplete?q=${encodeURIComponent(query)}`);
+      if (!response.ok) return;
+
+      const songs = await response.json();
+      autocompleteResults.innerHTML = '';
+
+      songs.forEach((song: { title: string, videoId: string }) => {
+        const resultItem = document.createElement('div');
+        resultItem.className = 'result-item';
+        resultItem.textContent = song.title;
+        resultItem.title = song.title; // Для длинных названий
+        resultItem.addEventListener('click', () => onSongSelectFromSearch(song));
+        autocompleteResults.appendChild(resultItem);
+      });
+
+      autocompleteResults.classList.remove('hidden');
+    } catch (error) {
+      console.error("Autocomplete error:", error);
+    }
+  }, 300);
+}
+
+async function onSongSelectFromSearch(song: { title: string, videoId: string }) {
+  soundManager.playSound('characterselect');
+  autocompleteResults.classList.add('hidden');
+  searchInput.value = '';
+
+  startScreen.classList.add('hidden');
+  loadingScreen.classList.remove('hidden');
+  analysisText.textContent = `Downloading: ${song.title}`;
+  analysisText.classList.remove('hidden');
+  loadingText.classList.add('hidden');
+
+  try {
+    videoUrl = `https://www.youtube.com/watch?v=${song.videoId}`;
+    console.log(`[Frontend] Устанавливаю URL для видео-экранов: ${videoUrl}`);
+    preloadVideoScreens();
+
+    console.log(`[Frontend] Запрашиваю полное аудио для videoId: ${song.videoId}`);
+    const response = await fetch(`http://localhost:3001/get-audio?videoId=${song.videoId}`);
+
+    if (!response.ok) {
+      throw new Error(`Server error while fetching audio: ${response.statusText}`);
+    }
+
+    const arrayBuffer = await response.arrayBuffer();
+
+    analysisText.textContent = 'Analyzing your ride...';
+    await analyzeAudioAndGenerateTrack(arrayBuffer.slice(0));
+
+    analysisText.classList.add('hidden');
+    loadingText.classList.remove('hidden');
+    setupAndPlayAudio(arrayBuffer);
+
+  } catch (error) {
+    console.error("Критическая ошибка при обработке выбранной песни:", error);
+    alert("Sorry, there was an error loading that song. Please try a different one or a local file.");
+    location.reload();
+  }
 }
 
 function smoothArray(data: number[], windowSize: number): number[] {

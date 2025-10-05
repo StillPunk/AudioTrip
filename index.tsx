@@ -8,6 +8,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { gsap } from "gsap";
 
 const SketchShader = {
   uniforms: {
@@ -149,6 +150,11 @@ let actualPlayerLane = 1; // The player's current physical lane (can be fraction
 const keyState = {left: false, right: false}; // Keyboard state for controls
 let timeInRedZone = 0; // Tracks how long player is in a high-energy zone
 let isSketchEffectToggledOn = false;
+let isGpuPrewarmed = false;
+let activeTransition: { inProgress: boolean, onComplete: () => void } = {
+  inProgress: false,
+  onComplete: () => {}
+};
 
 // --- Color & Effects State ---
 let currentColor = new THREE.Color(0x00bfff);
@@ -240,57 +246,90 @@ const soundManager = {
     for (const key in this.soundsToLoad) {
       const fileName = this.soundsToLoad[key as keyof typeof this.soundsToLoad];
       this.audioObjects[key] = new Audio(`assets/sounds/${fileName}`);
-      this.audioObjects[key].volume = 0.7; // <<-- Можете настроить громкость здесь
+      this.audioObjects[key].volume = 0.7;
     }
     console.log("Sounds loaded.");
   },
 
   playSound: function(name: string) {
     if (this.audioObjects[name]) {
-      // Перематываем звук в начало и воспроизводим, чтобы можно было кликать быстро
       this.audioObjects[name].currentTime = 0;
       this.audioObjects[name].play();
     }
   }
 };
 
-function prewarmEnvironment(group: THREE.Group) {
-  if (!group) return;
+async function forceGpuPrewarm() {
+  if (isGpuPrewarmed) return;
 
-  const instancedMeshes: THREE.InstancedMesh[] = [];
-  group.traverse((object) => {
-    if (object instanceof THREE.InstancedMesh) {
-      instancedMeshes.push(object);
+  console.log("!!! Forcing GPU to pre-load all assets. This might take a moment...");
+
+  const prewarmTargets = [cityGroup, solarSystemGroup];
+
+  for (const group of prewarmTargets) {
+    group.visible = true;
+
+    renderer.render(scene, camera);
+
+    group.visible = false;
+  }
+
+  renderer.info.memory.geometries = 0;
+  renderer.info.memory.textures = 0;
+
+  console.log("!!! GPU pre-warm complete. All transitions will be smooth.");
+  isGpuPrewarmed = true;
+}
+
+function fade(group: THREE.Group | null, opacity: number, duration: number, onComplete?: () => void) {
+  if (!group) {
+    if (onComplete) onComplete();
+    return;
+  }
+
+  const transitionTarget = { value: group.userData.opacity !== undefined ? group.userData.opacity : 1.0 };
+
+  gsap.to(transitionTarget, {
+    value: opacity,
+    duration: duration,
+    onUpdate: () => {
+      group.userData.opacity = transitionTarget.value;
+      group.traverse((object: any) => {
+        if (object.material) {
+          const materials = Array.isArray(object.material) ? object.material : [object.material];
+          materials.forEach(material => {
+            material.transparent = true;
+            material.opacity = transitionTarget.value;
+          });
+        }
+      });
+    },
+    onComplete: () => {
+      if (opacity >= 1.0) {
+        group.traverse((object: any) => {
+          if (object.material) {
+            const materials = Array.isArray(object.material) ? object.material : [object.material];
+            materials.forEach(material => {
+              material.transparent = false;
+            });
+          }
+        });
+      }
+      if (onComplete) onComplete();
     }
   });
-  instancedMeshes.forEach(mesh => {
-    scene.add(mesh);
-  });
-
-  // 2. Выполняем принудительную компиляцию
-  renderer.compile(scene, camera);
-
-  // 3. Возвращаем инстансы обратно в их группу
-  instancedMeshes.forEach(mesh => {
-    group.add(mesh);
-  });
-
-  // Убеждаемся, что основная группа все еще скрыта
-  group.visible = false;
 }
 
 function createTunnelSegmentMesh(): THREE.Mesh {
-  const tunnelRadius = 20;   // Радиус тоннеля
-  const segmentLength = 4;   // Длина одного маленького сегмента
+  const tunnelRadius = 20;
+  const segmentLength = 4;
 
   const segmentGeometry = new THREE.CylinderGeometry(tunnelRadius, tunnelRadius, segmentLength, 32, 1, true);
 
-  // Этот материал не реагирует на свет и не создает тени или блики на стыках.
-  // Он просто рисует сплошной, ровный цвет. Идеально для нашей задачи.
   const segmentMaterial = new THREE.MeshBasicMaterial({
-    color: 0x00ff00,           // Цвет будет меняться динамически
-    side: THREE.BackSide,      // Рендерим внутреннюю поверхность
-    toneMapped: false          // Помогает свечению быть ярче
+    color: 0x00ff00,
+    side: THREE.BackSide,
+    toneMapped: false
   });
 
   const segment = new THREE.Mesh(segmentGeometry, segmentMaterial);
@@ -562,6 +601,7 @@ function createCityEnvironment() {
       const ground = new THREE.Mesh(groundGeometry, groundMaterial);
       ground.rotation.x = -Math.PI / 2;
       ground.position.y = -50;
+      ground.name = "city_ground_plane";
       chunk.add(ground);
 
       cityGroup.add(chunk);
@@ -644,7 +684,7 @@ function createSolarSystemEnvironment() {
     planet.position.copy(data.position);
 
     solarSystemGroup.add(planet);
-    planets.push(planet); // Сохраняем для анимации
+    planets.push(planet);
   });
 }
 
@@ -999,17 +1039,13 @@ async function init() {
     }
   });
 
+  createCityEnvironment();
+  createSolarSystemEnvironment();
+
   // Unlock UI
   startPrompt.textContent = 'Choose a song to start your ride';
   fileLabel.classList.remove('hidden');
   fileInput.disabled = false;
-
-  createCityEnvironment();
-  createSolarSystemEnvironment();
-
-  prewarmEnvironment(cityGroup);
-  prewarmEnvironment(solarSystemGroup);
-  // prewarmEnvironment(spaceGroup);
 
   animate();
 }
@@ -1278,7 +1314,8 @@ async function onFileSelect(event: Event) {
   loadingText.classList.add('hidden');
   analysisText.classList.remove('hidden');
 
-  // НОВАЯ ФУНКЦИЯ ДЛЯ "ОЧИСТКИ" НАЗВАНИЯ ПЕСНИ ОТ МУСОРА
+  await forceGpuPrewarm();
+
   const cleanSearchQuery = (rawQuery: string): string => {
     return rawQuery
       // Удаляем все в скобках () и []
@@ -1303,7 +1340,6 @@ async function onFileSelect(event: Event) {
       return;
     }
 
-    // ОЧИЩАЕМ ЗАПРОС ПЕРЕД ОТПРАВКОЙ
     const cleanedQuery = cleanSearchQuery(query);
 
     console.log(`[ПОИСК] Отправляю ОЧИЩЕННЫЙ запрос на сервер: "${cleanedQuery}"`);
@@ -1320,7 +1356,6 @@ async function onFileSelect(event: Event) {
       .catch(error => console.warn(error.message));
   };
 
-  // 1. ПЫТАЕМСЯ ПРОЧИТАТЬ ТЕГИ
   jsmediatags.read(file, {
     onSuccess: (tag: any) => {
       const tags = tag.tags;
@@ -1339,7 +1374,6 @@ async function onFileSelect(event: Event) {
     }
   });
 
-  // 2. АНАЛИЗ АУДИО ИДЕТ ПАРАЛЛЕЛЬНО
   async function analyzeAndPlayAudio(audioFile: File) {
     try {
       const arrayBuffer = await audioFile.arrayBuffer();
@@ -1403,6 +1437,7 @@ async function onSongSelectFromSearch(song: { title: string, videoId: string }) 
   loadingText.classList.add('hidden');
 
   try {
+    await forceGpuPrewarm();
     videoUrl = `https://www.youtube.com/watch?v=${song.videoId}`;
     console.log(`[Frontend] Устанавливаю URL для видео-экранов: ${videoUrl}`);
     preloadVideoScreens();
@@ -1471,7 +1506,6 @@ function updateEnvironmentElements() {
     }
   }
 
-  // --- ОБНОВЛЕНИЕ СЕГМЕНТОВ ТОННЕЛЯ (теперь работает как рамки) ---
   for (const tunnelMesh of tunnelGroup.children) {
     const material = (tunnelMesh as THREE.Mesh).material as THREE.MeshBasicMaterial;
     material.color.copy(currentColor);
@@ -1892,8 +1926,6 @@ function pregenerateBlocks(energyMap: number[]) {
       lastBlockProgress = progress;
 
     } else if (isMultiBlock) {
-      // --- ИСПРАВЛЕННАЯ ЛОГИКА ЗДЕСЬ ---
-
       // 1. Решаем, сколько блоков мы хотим создать: один или два.
       // Это создает больше разнообразия, чем всегда создавать по два.
       const numBlocksToSpawn = Math.random() < 0.5 ? 1 : 2;
@@ -1913,8 +1945,6 @@ function pregenerateBlocks(energyMap: number[]) {
         const lane = availableLanes[i];
         allBlocks.push({ progress, lane, type: 'color', mesh: null, collected: false });
       }
-
-      // ------------------------------------
 
       consecutiveObstacles = 0;
       lastBlockProgress = progress;
@@ -2213,19 +2243,6 @@ function updateSceneColors(targetColor: THREE.Color) {
   // scene.fog.color.copy(currentColor);
 }
 
-function startEnvironmentTransition(nextEnv: EnvironmentState, duration: number) {
-  // В самом начале перехода скрываем ВСЕ "тяжелые" группы и сферы
-  if (cityGroup) cityGroup.visible = false;
-  if (solarSystemGroup) solarSystemGroup.visible = false;
-  if (cityBackgroundSphere) cityBackgroundSphere.visible = false; // <<< Добавлено
-
-  // В середине перехода меняем только "дешевые" вещи: фон и туман
-  setTimeout(() => {
-    setActiveEnvironment(nextEnv);
-    currentEnvironment = nextEnv;
-  }, (duration / 2) * 1000);
-}
-
 const clock = new THREE.Clock();
 
 function animate() {
@@ -2437,6 +2454,7 @@ function animate() {
     if (
       timeInRedZone >= TIME_IN_RED_ZONE_TO_TRIGGER &&
       !hyperspaceEffect.active &&
+      !activeTransition.inProgress &&
       audioContext.currentTime > lastHyperspaceTriggerTime + HYPERSPACE_COOLDOWN &&
       hyperspaceJumpCount < MAX_HYPERSPACE_JUMPS
     ) {
@@ -2445,10 +2463,45 @@ function animate() {
       lastHyperspaceTriggerTime = audioContext.currentTime;
       hyperspaceJumpCount++;
       timeInRedZone = 0;
-      const nextEnvironment = (currentEnvironment + 1) % 3;
-      startEnvironmentTransition(nextEnvironment, hyperspaceEffect.duration);
-      // isSketchEffectToggledOn = !isSketchEffectToggledOn;
-      // sketchPass.enabled = isSketchEffectToggledOn;
+
+      activeTransition.inProgress = true;
+      const fromEnv = currentEnvironment;
+      const nextEnv = (currentEnvironment + 1) % 3;
+
+      const fromGroup = fromEnv === EnvironmentState.SPACE ? spaceGroup : (fromEnv === EnvironmentState.CITY ? cityGroup : solarSystemGroup);
+      const toGroup = nextEnv === EnvironmentState.SPACE ? spaceGroup : (nextEnv === EnvironmentState.CITY ? cityGroup : solarSystemGroup);
+
+      // Длительность угасания/появления - половина от времени гиперпрыжка
+      const fadeDuration = hyperspaceEffect.duration / 2;
+
+      fade(fromGroup, 0, fadeDuration, () => {
+        if (fromGroup) fromGroup.visible = false;
+        if (fromEnv === EnvironmentState.CITY) {
+          cityBackgroundSphere.visible = false;
+        }
+
+        setActiveEnvironment(nextEnv);
+
+        if (toGroup) toGroup.visible = true;
+        if (nextEnv === EnvironmentState.CITY) {
+          cityBackgroundSphere.visible = true;
+        }
+
+        fade(toGroup, 1, fadeDuration);
+        if (nextEnv === EnvironmentState.CITY) {
+          fade(cityBackgroundSphere, 1, fadeDuration);
+        }
+      });
+
+      if (fromEnv === EnvironmentState.CITY) {
+        fade(cityBackgroundSphere, 0, fadeDuration);
+      }
+
+      setTimeout(() => {
+        console.log(`Переход из ${EnvironmentState[fromEnv]} в ${EnvironmentState[nextEnv]} ЗАВЕРШЕН.`);
+        currentEnvironment = nextEnv;
+        activeTransition.inProgress = false;
+      }, hyperspaceEffect.duration * 1000);
     }
 
     // Dynamic FOV and Hyperspace Update
@@ -2805,7 +2858,6 @@ async function preloadVideoScreens() {
     video.addEventListener('error', () => {
       (video as any).isReady = false; // Помечаем как не готовый
     }, { once: true });
-    // ---------------------------------------------
   }
 }
 

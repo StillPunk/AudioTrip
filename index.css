@@ -382,3 +382,102 @@ input[type="file"] {
   background-color: #0ff;
   color: #000;
 }
+
+.menu-screen {
+  position: absolute;
+  width: 90%;
+  max-width: 800px;
+  background: rgba(0, 0, 0, 0.85);
+  padding: 20px 30px;
+  border-radius: 15px;
+  border: 2px solid #0ff;
+  box-shadow: 0 0 15px #0ff, inset 0 0 10px #0ff;
+  pointer-events: all;
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  z-index: 101;
+}
+
+.menu-screen h1 {
+  margin-bottom: 10px;
+}
+
+.menu-buttons-container {
+  display: flex;
+  justify-content: center;
+  gap: 20px;
+  width: 100%;
+  margin-top: 15px;
+}
+.menu-buttons-container button {
+  margin-top: 0;
+  padding: 10px 20px;
+  font-size: 14px;
+}
+
+#total-score-container {
+  position: absolute;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 18px;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.5);
+  padding: 8px 15px;
+  border-radius: 8px;
+  border: 1px solid #0ff;
+  text-shadow: 0 0 5px #0ff;
+  z-index: 5;
+}
+
+#history-table-container {
+  width: 100%;
+  max-height: 60vh;
+  overflow-y: auto;
+  border: 1px solid #088;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th, td {
+  padding: 12px 15px;
+  text-align: left;
+  text-shadow: none;
+}
+
+thead {
+  background-color: #033;
+  position: sticky;
+  top: 0;
+}
+
+th {
+  font-size: 1em;
+  color: #0ff;
+}
+
+tbody tr {
+  border-bottom: 1px solid #055;
+  transition: background-color 0.2s;
+}
+
+tbody tr:last-child {
+  border-bottom: none;
+}
+
+tbody tr:hover {
+  background-color: #044;
+}
+
+td:nth-child(2), td:nth-child(3) {
+  text-align: center;
+}
+
+td:nth-child(3) {
+  font-weight: bold;
+  font-size: 1.1em;
+}

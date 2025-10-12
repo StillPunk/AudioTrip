@@ -100,6 +100,14 @@ const progressBarFill = document.getElementById('progress-bar-fill') as HTMLElem
 const scoreMultiplierEl = document.getElementById('score-multiplier')!;
 const searchInput = document.getElementById('song-search-input') as HTMLInputElement;
 const autocompleteResults = document.getElementById('autocomplete-results')!;
+const historyScreen = document.getElementById('history-screen')!;
+const historyTableBody = document.getElementById('history-table-body')!;
+const historyButton = document.getElementById('history-button')!;
+const historyCloseButton = document.getElementById('history-close-button')!;
+const leaderboardScreen = document.getElementById('leaderboard-screen')!;
+const leaderboardButton = document.getElementById('leaderboard-button')!;
+const leaderboardCloseButton = document.getElementById('leaderboard-close-button')!;
+const totalScoreEl = document.getElementById('total-score')!;
 
 const STYLE_RANKS = [
   { name: 'Dismal', rank: 'D', hitsNeeded: 5, multiplier: 2, image: 'assets/images/rank_d.png' },
@@ -155,6 +163,11 @@ let activeTransition: { inProgress: boolean, onComplete: () => void } = {
   inProgress: false,
   onComplete: () => {}
 };
+let currentTrackName = '';
+let currentVideoId = '';
+let maxCombo = 0;
+let totalMisses = 0;
+const rankHistory: number[] = [];
 
 // --- Color & Effects State ---
 let currentColor = new THREE.Color(0x00bfff);
@@ -1039,6 +1052,12 @@ async function init() {
     }
   });
 
+  historyButton.addEventListener('click', showHistoryScreen);
+  historyCloseButton.addEventListener('click', () => historyScreen.classList.add('hidden'));
+
+  leaderboardButton.addEventListener('click', () => leaderboardScreen.classList.remove('hidden'));
+  leaderboardCloseButton.addEventListener('click', () => leaderboardScreen.classList.add('hidden'));
+
   createCityEnvironment();
   createSolarSystemEnvironment();
 
@@ -1047,7 +1066,55 @@ async function init() {
   fileLabel.classList.remove('hidden');
   fileInput.disabled = false;
 
+  loadTotalScore();
+
   animate();
+}
+
+async function loadTotalScore() {
+  const telegramUserId = 'user123';
+  try {
+    const response = await fetch(`http://localhost:3001/api/history/${telegramUserId}`);
+    if (!response.ok) return;
+    const data = await response.json();
+    totalScoreEl.textContent = data.totalScore.toLocaleString('ru-RU');
+  } catch (error) {
+    console.error('Failed to load total score:', error);
+  }
+}
+
+async function showHistoryScreen() {
+  const telegramUserId = 'user123';
+
+  try {
+    console.log('[API] Запрашиваю историю игр...');
+    const response = await fetch(`http://localhost:3001/api/history/${telegramUserId}`);
+    if (!response.ok) {
+      throw new Error('Не удалось загрузить историю.');
+    }
+
+    const data = await response.json();
+
+    totalScoreEl.textContent = data.totalScore.toLocaleString('ru-RU');
+
+    historyTableBody.innerHTML = '';
+
+    data.history.forEach((record: any) => {
+      const row = document.createElement('tr');
+      row.innerHTML = `
+        <td>${record.track_name}</td>
+        <td>${record.best_score.toLocaleString('ru-RU')}</td>
+        <td>${record.performance_rank}</td>
+      `;
+      historyTableBody.appendChild(row);
+    });
+
+    historyScreen.classList.remove('hidden');
+
+  } catch (error) {
+    console.error('[API] Ошибка при получении истории:', error);
+    alert('Не удалось загрузить историю. Попробуйте позже.');
+  }
 }
 
 function onKeyDown(event: KeyboardEvent) {
@@ -1309,6 +1376,9 @@ async function onFileSelect(event: Event) {
   const file = (event.target as HTMLInputElement).files?.[0];
   if (!file) return;
 
+  currentTrackName = file.name.replace(/\.[^/.]+$/, "");
+  currentVideoId = `local_${file.name}_${file.size}`;
+
   startScreen.classList.add('hidden');
   loadingScreen.classList.remove('hidden');
   loadingText.classList.add('hidden');
@@ -1426,6 +1496,8 @@ function onSearchInput() {
 }
 
 async function onSongSelectFromSearch(song: { title: string, videoId: string }) {
+  currentTrackName = song.title;
+  currentVideoId = song.videoId;
   soundManager.playSound('characterselect');
   autocompleteResults.classList.add('hidden');
   searchInput.value = '';
@@ -1798,6 +1870,9 @@ function setupAndPlayAudio(arrayBuffer: ArrayBuffer) {
 
     loadingScreen.classList.add('hidden');
     gameHud.classList.remove('hidden');
+    maxCombo = 0;
+    totalMisses = 0;
+    rankHistory.length = 0;
     score = 0;
     consecutiveHits = 0;
     currentRankIndex = -1;
@@ -2058,6 +2133,10 @@ function checkCollisions() {
         } else {
           // --- СТОЛКНОВЕНИЕ С СЕРЫМ БЛОКОМ ---
           if (!isSketchModeActive) {
+            if (consecutiveHits > maxCombo) {
+              maxCombo = consecutiveHits;
+            }
+            totalMisses++;
             soundManager.playSound('collision_stone');
             consecutiveHits = 0; // Сбрасываем счетчик
             score = Math.max(0, score - 25);
@@ -2091,6 +2170,10 @@ function checkCollisions() {
 }
 
 function updateStyleUI() {
+  if (currentRankIndex > -1) {
+    rankHistory.push(currentRankIndex);
+  }
+
   if (isSketchModeActive) {
     scoreMultiplierEl.textContent = '(x10)';
 
@@ -2690,9 +2773,64 @@ function animate() {
   composer.render();
 }
 
-function endGame() {
+async function endGame() {
   if (!gameStarted) return;
   gameStarted = false;
+  if (consecutiveHits > maxCombo) {
+    maxCombo = consecutiveHits;
+  }
+
+  function calculatePerformanceRank(): string {
+    if (rankHistory.length === 0) return 'D';
+
+    const averageRankIndex = rankHistory.reduce((a, b) => a + b, 0) / rankHistory.length;
+
+    const penalty = totalMisses * 0.15;
+    const finalRankValue = averageRankIndex - penalty;
+
+    if (finalRankValue >= 5.5) return 'SSS';
+    if (finalRankValue >= 4.5) return 'SS';
+    if (finalRankValue >= 3.5) return 'S';
+    if (finalRankValue >= 2.5) return 'A';
+    if (finalRankValue >= 1.5) return 'B';
+    if (finalRankValue >= 0.5) return 'C';
+    return 'D';
+  }
+
+  const performanceRank = calculatePerformanceRank();
+
+  const telegramUserId = 'user123';
+
+  const gameData = {
+    userId: telegramUserId,
+    trackName: currentTrackName,
+    videoId: currentVideoId,
+    score: score,
+    rank: performanceRank,
+    maxCombo: maxCombo,
+    misses: totalMisses
+  };
+
+  try {
+    console.log('[API] Отправляю результаты игры на сервер:', gameData);
+    const response = await fetch('http://localhost:3001/api/game-end', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(gameData),
+    });
+
+    if (response.ok) {
+      console.log('[API] Результаты успешно сохранены.');
+      loadTotalScore();
+    } else {
+      console.error('[API] Ошибка при сохранении результатов:', await response.json());
+    }
+  } catch (error) {
+    console.error('[API] Не удалось подключиться к серверу для сохранения результатов:', error);
+  }
+
   gameHud.classList.add('hidden');
   styleRankContainer.classList.add('hidden');
   finalScoreEl.textContent = score.toString();

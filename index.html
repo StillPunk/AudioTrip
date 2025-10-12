@@ -9,6 +9,34 @@
 
 <body>
 <div id="ui-container">
+  <div id="history-screen" class="menu-screen hidden">
+    <h1>История заездов</h1>
+    <div id="history-table-container">
+      <table>
+        <thead>
+        <tr>
+          <th>Трек</th>
+          <th>Лучший счет</th>
+          <th>Ранг</th>
+        </tr>
+        </thead>
+        <tbody id="history-table-body">
+        </tbody>
+      </table>
+    </div>
+    <button id="history-close-button">Закрыть</button>
+  </div>
+
+  <div id="leaderboard-screen" class="menu-screen hidden">
+    <h1>Таблица лидеров</h1>
+    <p>Этот раздел появится в будущих обновлениях!</p>
+    <button id="leaderboard-close-button">Закрыть</button>
+  </div>
+
+  <div id="total-score-container">
+    Общий счет: <span id="total-score">0</span>
+  </div>
+
   <div id="vignette"></div>
 
   <div id="start-screen">
@@ -28,6 +56,10 @@
 
     <label for="audio-file-input" class="file-label" id="file-label">Select Local Audio File</label>
     <input type="file" id="audio-file-input" accept="*"/>
+    <div class="menu-buttons-container">
+      <button id="history-button">История</button>
+      <button id="leaderboard-button">Лидеры</button>
+    </div>
   </div>
 
   <div id="loading-screen" class="hidden">

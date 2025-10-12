@@ -33,6 +33,12 @@ body {
   pointer-events: none;
 }
 
+#start-prompt {
+  max-width: 300px;
+  justify-self: center;
+  font-size: 14px;
+}
+
 #vignette {
   position: absolute;
   top: 0;
@@ -59,7 +65,7 @@ body {
 }
 
 h1 {
-  font-size: 3em;
+  font-size: 28px;
   color: #0ff;
   margin-bottom: 10px;
   text-shadow: 0 0 5px #0ff, 0 0 10px #0ff, 0 0 20px #0ff;
@@ -95,6 +101,8 @@ input[type="file"] {
   pointer-events: all;
   font-family: 'Orbitron', sans-serif;
   text-shadow: 0 0 5px #0ff;
+  width: 90%;
+  align-self: center;
 }
 
 .file-label:hover, button:hover {
@@ -137,6 +145,8 @@ input[type="file"] {
   padding: 0 8px;
   font-size: 22px;
   transition: background-color 0.3s, color 0.3s, box-shadow 0.3s, border-color 0.3s;
+  width: 38px;
+  align-self: flex-start;
 }
 
 #game-hud.style-rank-blue #score-container,
@@ -388,7 +398,7 @@ input[type="file"] {
   width: 90%;
   max-width: 800px;
   background: rgba(0, 0, 0, 0.85);
-  padding: 20px 30px;
+  padding: 20px 0;
   border-radius: 15px;
   border: 2px solid #0ff;
   box-shadow: 0 0 15px #0ff, inset 0 0 10px #0ff;
@@ -419,16 +429,32 @@ input[type="file"] {
 #total-score-container {
   position: absolute;
   top: 20px;
-  left: 50%;
-  transform: translateX(-50%);
-  font-size: 18px;
-  color: #fff;
+  right: 20px;
+  font-size: 16px;
   background: rgba(0, 0, 0, 0.5);
   padding: 8px 15px;
   border-radius: 8px;
   border: 1px solid #0ff;
   text-shadow: 0 0 5px #0ff;
-  z-index: 5;
+}
+
+.main-menu-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 15px;
+  width: 100%;
+  margin-top: 15px;
+}
+
+.main-menu-actions .file-label,
+.main-menu-actions button {
+  margin-top: 0;
+  padding: 12px 20px;
+  font-size: 15px;
+  flex-basis: 180px;
+  flex-grow: 1;
 }
 
 #history-table-container {
@@ -480,4 +506,32 @@ td:nth-child(2), td:nth-child(3) {
 td:nth-child(3) {
   font-weight: bold;
   font-size: 1.1em;
+}
+
+#claim-button {
+  position: absolute;
+  bottom: 20px;
+  right: 20px;
+  padding: 8px 15px;
+  font-size: 14px;
+  border-color: #f0f;
+  color: #f0f;
+  text-shadow: 0 0 5px #f0f;
+  z-index: 5;
+  margin-top: 0;
+  pointer-events: all;
+  transition: all 0.3s;
+  width: 100px;
+}
+
+#claim-button:hover {
+  background-color: #f0f;
+  color: #000;
+  box-shadow: 0 0 15px #f0f;
+  text-shadow: none;
+}
+
+#claim-button.hidden {
+  opacity: 0;
+  pointer-events: none;
 }

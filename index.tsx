@@ -108,6 +108,11 @@ const leaderboardScreen = document.getElementById('leaderboard-screen')!;
 const leaderboardButton = document.getElementById('leaderboard-button')!;
 const leaderboardCloseButton = document.getElementById('leaderboard-close-button')!;
 const totalScoreEl = document.getElementById('total-score')!;
+const claimButton = document.getElementById('claim-button')!;
+const claimScreen = document.getElementById('claim-screen')!;
+const claimCloseButton = document.getElementById('claim-close-button')!;
+const tutorialScreen = document.getElementById('tutorial-screen')!;
+const tutorialContinueButton = document.getElementById('tutorial-continue-button')!;
 
 const STYLE_RANKS = [
   { name: 'Dismal', rank: 'D', hitsNeeded: 5, multiplier: 2, image: 'assets/images/rank_d.png' },
@@ -1057,18 +1062,38 @@ async function init() {
 
   leaderboardButton.addEventListener('click', () => leaderboardScreen.classList.remove('hidden'));
   leaderboardCloseButton.addEventListener('click', () => leaderboardScreen.classList.add('hidden'));
+  claimButton.addEventListener('click', () => claimScreen.classList.remove('hidden'));
+  claimCloseButton.addEventListener('click', () => claimScreen.classList.add('hidden'));
 
   createCityEnvironment();
   createSolarSystemEnvironment();
 
   // Unlock UI
-  startPrompt.textContent = 'Choose a song to start your ride';
+  startPrompt.textContent = 'Enter a song to start your ride (VPN may be required)';
   fileLabel.classList.remove('hidden');
   fileInput.disabled = false;
 
   loadTotalScore();
 
   animate();
+}
+
+function checkAndShowTutorial(): Promise<void> {
+  if (localStorage.getItem('hasPlayedBefore') === 'true') {
+    return Promise.resolve();
+  }
+
+  return new Promise(resolve => {
+    tutorialScreen.classList.remove('hidden');
+
+    tutorialContinueButton.addEventListener('click', () => {
+      localStorage.setItem('hasPlayedBefore', 'true');
+
+      tutorialScreen.classList.add('hidden');
+
+      resolve();
+    }, { once: true });
+  });
 }
 
 async function loadTotalScore() {
@@ -1380,6 +1405,7 @@ async function onFileSelect(event: Event) {
   currentVideoId = `local_${file.name}_${file.size}`;
 
   startScreen.classList.add('hidden');
+  claimButton.classList.add('hidden');
   loadingScreen.classList.remove('hidden');
   loadingText.classList.add('hidden');
   analysisText.classList.remove('hidden');
@@ -1503,6 +1529,7 @@ async function onSongSelectFromSearch(song: { title: string, videoId: string }) 
   searchInput.value = '';
 
   startScreen.classList.add('hidden');
+  claimButton.classList.add('hidden');
   loadingScreen.classList.remove('hidden');
   analysisText.textContent = `Downloading: ${song.title}`;
   analysisText.classList.remove('hidden');
@@ -1856,11 +1883,12 @@ function setupAndPlayAudio(arrayBuffer: ArrayBuffer) {
   analyser.fftSize = 256;
   frequencyData = new Uint8Array(analyser.frequencyBinCount);
 
-  audioContext.decodeAudioData(arrayBuffer, (buffer) => {
+  audioContext.decodeAudioData(arrayBuffer, async (buffer) => {
     source = audioContext.createBufferSource();
     source.buffer = buffer;
     source.connect(analyser);
     analyser.connect(audioContext.destination);
+    await checkAndShowTutorial();
     source.start(0);
     source.onended = endGame;
     if (fadeOutPlane) {

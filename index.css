@@ -482,8 +482,10 @@ thead {
 }
 
 th {
-  font-size: 1em;
+  font-size: 12px;
   color: #0ff;
+  padding: 8px 15px;
+  white-space: nowrap;
 }
 
 tbody tr {
@@ -517,7 +519,7 @@ td:nth-child(3) {
   border-color: #f0f;
   color: #f0f;
   text-shadow: 0 0 5px #f0f;
-  z-index: 5;
+  z-index: 1;
   margin-top: 0;
   pointer-events: all;
   transition: all 0.3s;
@@ -534,4 +536,14 @@ td:nth-child(3) {
 #claim-button.hidden {
   opacity: 0;
   pointer-events: none;
+}
+
+#history-screen {
+  height: 100%;
+  max-height: 85%;
+  padding: 0 0 20px;
+}
+
+#history-close-button {
+  margin: 0;
 }

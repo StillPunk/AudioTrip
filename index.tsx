@@ -67,6 +67,80 @@ const SketchShader = {
   `
 };
 
+const RailEqualizerMaterial = {
+  uniforms: {
+    uBass: { value: 0.0 },
+    uMid: { value: 0.0 },
+    uTreble: { value: 0.0 },
+    uTime: { value: 0.0 },
+    emissive: { value: new THREE.Color(0x00bfff) },
+    emissiveIntensity: { value: 1.0 }
+  },
+
+  vertexShader: `
+    uniform float uBass;
+    uniform float uMid;
+    uniform float uTime;
+    uniform float uTreble;
+    
+    // Varying для передачи нормали во фрагментный шейдер
+    varying vec3 vNormal;
+    
+    void main() {
+      vNormal = normal;
+      
+      // --- НАСТРОЙКИ ЭФФЕКТА (как в JS) ---
+      const float BASS_INFLUENCE = 1.4;
+      const float MID_WAVE_SPEED = 0.5;
+      const float TREBLE_FLICKER = 0.1;
+      
+      // Генерация "случайного" числа для мерцания
+      float pseudoRandom = fract(sin(dot(position.xyz, vec3(12.9898, 78.233, 151.7182))) * 43758.5453);
+      
+      // 1. Формируем основную волну
+      float wave = sin(position.z * uMid * MID_WAVE_SPEED + uTime * 5.0);
+      
+      // 2. Определяем амплитуду (высоту) волны на основе басов
+      float amplitude = uBass * BASS_INFLUENCE;
+      
+      // 3. Добавляем высокочастотный "треск"
+      float flicker = (pseudoRandom - 0.5) * uTreble * TREBLE_FLICKER;
+      
+      // 4. Складываем все вместе для финального смещения
+      float displacement = amplitude * wave + flicker;
+      
+      // Смещаем вершину вдоль ее нормали
+      vec3 newPosition = position + normal * displacement;
+      
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(newPosition, 1.0);
+    }
+  `,
+
+  fragmentShader: `
+    uniform vec3 emissive;
+    uniform float emissiveIntensity;
+    varying vec3 vNormal;
+    
+    void main() {
+      // Простое затенение на основе нормалей для придания объема
+      float light = clamp(dot(vNormal, vec3(0.5, 0.5, 1.0)), 0.0, 1.0);
+      gl_FragColor = vec4(emissive * (light + emissiveIntensity), 1.0);
+    }
+  `
+};
+
+const _reusableVector1 = new THREE.Vector3();
+const _reusableVector2 = new THREE.Vector3();
+const _reusableVector3 = new THREE.Vector3();
+const _reusableVector4 = new THREE.Vector3();
+
+const _reusableFrame = {
+  point: new THREE.Vector3(),
+  tangent: new THREE.Vector3(),
+  normal: new THREE.Vector3(),
+  binormal: new THREE.Vector3()
+};
+
 enum EnvironmentState { SPACE, CITY, SOLAR_SYSTEM }
 let currentEnvironment = EnvironmentState.SPACE;
 let spaceGroup: THREE.Group;
@@ -1775,7 +1849,12 @@ function createTrackMesh(frames: any[]) {
     rightLinePoints.push(point.clone().add(rightLineOffset));
   }
 
-  const railMat = new THREE.MeshStandardMaterial({emissiveIntensity: 1.0, side: THREE.DoubleSide});
+  const railMat = new THREE.ShaderMaterial({
+    uniforms: THREE.UniformsUtils.clone(RailEqualizerMaterial.uniforms),
+    vertexShader: RailEqualizerMaterial.vertexShader,
+    fragmentShader: RailEqualizerMaterial.fragmentShader,
+    side: THREE.DoubleSide
+  });
   const lineMat = new THREE.MeshBasicMaterial({color: 0xffffff, side: THREE.DoubleSide});
 
   const leftRail = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(leftRailPoints), segments, 0.2, 8, false), railMat.clone());
@@ -2067,7 +2146,7 @@ function pregenerateBlocks(energyMap: number[]) {
   }
 }
 
-function getInterpolatedFrame(progress: number) {
+function getInterpolatedFrame(progress: number, targetFrame = _reusableFrame) {
   const totalFrames = trackFrames.length - 1;
   const idx = progress * totalFrames;
   const i1 = Math.floor(idx);
@@ -2075,29 +2154,37 @@ function getInterpolatedFrame(progress: number) {
   const t = idx - i1;
 
   if (i1 >= trackFrames.length || i2 >= trackFrames.length) {
-    return trackFrames[totalFrames];
+    const lastFrame = trackFrames[totalFrames];
+    targetFrame.point.copy(lastFrame.point);
+    targetFrame.tangent.copy(lastFrame.tangent);
+    targetFrame.normal.copy(lastFrame.normal);
+    targetFrame.binormal.copy(lastFrame.binormal);
+    return targetFrame;
   }
   if (i1 === i2) {
-    return trackFrames[i1];
+    const frame = trackFrames[i1];
+    targetFrame.point.copy(frame.point);
+    targetFrame.tangent.copy(frame.tangent);
+    targetFrame.normal.copy(frame.normal);
+    targetFrame.binormal.copy(frame.binormal);
+    return targetFrame;
   }
 
   const frame1 = trackFrames[i1];
   const frame2 = trackFrames[i2];
 
-  const interpolatedFrame = {
-    point: new THREE.Vector3().lerpVectors(frame1.point, frame2.point, t),
-    tangent: new THREE.Vector3().lerpVectors(frame1.tangent, frame2.tangent, t).normalize(),
-    normal: new THREE.Vector3().lerpVectors(frame1.normal, frame2.normal, t).normalize(),
-    binormal: new THREE.Vector3().lerpVectors(frame1.binormal, frame2.binormal, t).normalize()
-  };
+  targetFrame.point.lerpVectors(frame1.point, frame2.point, t);
+  targetFrame.tangent.lerpVectors(frame1.tangent, frame2.tangent, t).normalize();
+  targetFrame.normal.lerpVectors(frame1.normal, frame2.normal, t).normalize();
+  targetFrame.binormal.lerpVectors(frame1.binormal, frame2.binormal, t).normalize();
+
 
   // Re-orthogonalize the frame to be safe after interpolation
-  interpolatedFrame.normal.projectOnPlane(interpolatedFrame.tangent).normalize();
-  interpolatedFrame.binormal.crossVectors(interpolatedFrame.tangent, interpolatedFrame.normal);
+  targetFrame.normal.projectOnPlane(targetFrame.tangent).normalize();
+  targetFrame.binormal.crossVectors(targetFrame.tangent, targetFrame.normal);
 
-  return interpolatedFrame;
+  return targetFrame;
 }
-
 
 function updateBlocks() {
   const activationZone = playerProgress + BLOCK_VIEW_DISTANCE;
@@ -2116,11 +2203,10 @@ function updateBlocks() {
     if (!block.mesh) continue;
 
     const frame = getInterpolatedFrame(block.progress);
+    const point = _reusableVector1.copy(frame.point);
 
-    const point = frame.point.clone();
-
-    const horizontalOffset = frame.binormal.clone().multiplyScalar(LANE_POSITIONS[block.lane]);
-    const verticalOffset = frame.normal.clone().multiplyScalar(0.8);
+    const horizontalOffset = _reusableVector2.copy(frame.binormal).multiplyScalar(LANE_POSITIONS[block.lane]);
+    const verticalOffset = _reusableVector3.copy(frame.normal).multiplyScalar(0.8);
     point.add(horizontalOffset).add(verticalOffset);
 
     block.mesh.position.copy(point);
@@ -2339,19 +2425,26 @@ function updateSceneColors(targetColor: THREE.Color) {
 
   if (trackGroup) {
     trackGroup.children.forEach((child: any) => {
-      if (child.geometry.type === 'TubeGeometry' && child.material?.emissive) {
-        child.material.color.copy(currentColor);
-        child.material.emissive.copy(currentColor);
+      // ВАЖНО: Мы должны менять цвет ТОЛЬКО у рельсов, которые являются TubeGeometry.
+      // Дорожное полотно имеет другой тип геометрии и этот блок его проигнорирует.
+      if (child.geometry.type === 'TubeGeometry') {
+        if (!child.material) return;
+
+        // Так как все рельсы теперь используют наш кастомный шейдер,
+        // мы обновляем их uniform-переменную 'emissive', которая отвечает за цвет.
+        if (child.material.isShaderMaterial) {
+          child.material.uniforms.emissive.value.copy(currentColor);
+        }
+        // Этот блок на случай, если остался какой-то старый материал рельсов
+        else if (child.material.emissive) {
+          child.material.emissive.copy(currentColor);
+          child.material.color.copy(currentColor);
+        }
       }
+      // Для всех остальных частей трассы (дорожное полотно, разделительные линии)
+      // мы НЕ ДЕЛАЕМ НИЧЕГО, и они сохраняют свой оригинальный темный и белый цвет.
     });
   }
-
-  // Update background sphere emissive color for glow effect
-  // if (backgroundSphere && (backgroundSphere.material as THREE.MeshStandardMaterial).emissive) {
-  //   (backgroundSphere.material as THREE.MeshStandardMaterial).emissive.copy(currentColor);
-  // }
-
-  // scene.fog.color.copy(currentColor);
 }
 
 const clock = new THREE.Clock();
@@ -2376,7 +2469,7 @@ function animate() {
     const bass = (frequencyData[1] + frequencyData[2]) / 2 / 255;
 
     // --- Core track vectors for this frame ---
-    const currentFrame = getInterpolatedFrame(playerProgress);
+    const currentFrame = getInterpolatedFrame(playerProgress, _reusableFrame);
     const { point: currentPoint, tangent, normal: trackNormal, binormal } = currentFrame;
 
     // --- Player Logic ---
@@ -2388,16 +2481,18 @@ function animate() {
       targetPlayerLane = 1;
     }
     actualPlayerLane = THREE.MathUtils.lerp(actualPlayerLane, targetPlayerLane, 0.35);
-    const horizontalOffset = binormal.clone().multiplyScalar(THREE.MathUtils.lerp(LANE_POSITIONS[0], LANE_POSITIONS[2], actualPlayerLane / 2));
+    const horizontalOffset = _reusableVector1.copy(binormal).multiplyScalar(THREE.MathUtils.lerp(LANE_POSITIONS[0], LANE_POSITIONS[2], actualPlayerLane / 2));
     const SHIP_HOVER_HEIGHT = 1.2;
-    const verticalOffset = trackNormal.clone().multiplyScalar(SHIP_HOVER_HEIGHT);
+    const verticalOffset = _reusableVector2.copy(trackNormal).multiplyScalar(SHIP_HOVER_HEIGHT);
     player.position.copy(currentPoint).add(horizontalOffset).add(verticalOffset);
+
     const lookAheadProgress = 0.003;
     const futureProgress = Math.min(playerProgress + lookAheadProgress, 1.0);
-    const futureFrame = getInterpolatedFrame(futureProgress);
+    const futureFrame = getInterpolatedFrame(futureProgress, { point: _reusableVector3, tangent: _reusableVector4, normal: _reusableVector2, binormal: _reusableVector1 }); // Используем временные векторы
+
     const futureHorizontalOffset = futureFrame.binormal.clone().multiplyScalar(THREE.MathUtils.lerp(LANE_POSITIONS[0], LANE_POSITIONS[2], actualPlayerLane / 2));
     const futureVerticalOffset = futureFrame.normal.clone().multiplyScalar(SHIP_HOVER_HEIGHT);
-    const lookAtTargetPoint = futureFrame.point.clone().add(futureHorizontalOffset).add(futureVerticalOffset);
+    const lookAtTargetPoint = _reusableVector3.copy(futureFrame.point).add(futureHorizontalOffset).add(futureVerticalOffset);
     player.up.copy(trackNormal);
     player.lookAt(lookAtTargetPoint);
     player.rotateY(Math.PI);
@@ -2405,13 +2500,13 @@ function animate() {
     // --- Camera Logic ---
     const CAM_HEIGHT = 6.0;
     const CAM_DISTANCE_BEHIND = 10.0;
-    const cameraVerticalOffset = trackNormal.clone().multiplyScalar(CAM_HEIGHT);
-    const cameraBehindOffset = tangent.clone().multiplyScalar(-CAM_DISTANCE_BEHIND);
-    const idealCameraPos = currentPoint.clone().add(cameraVerticalOffset).add(cameraBehindOffset);
+    const cameraVerticalOffset = _reusableVector1.copy(trackNormal).multiplyScalar(CAM_HEIGHT);
+    const cameraBehindOffset = _reusableVector2.copy(tangent).multiplyScalar(-CAM_DISTANCE_BEHIND);
+    const idealCameraPos = _reusableVector3.copy(currentPoint).add(cameraVerticalOffset).add(cameraBehindOffset);
     camera.position.lerp(idealCameraPos, 1.0);
     camera.up.copy(trackNormal);
     const LOOK_AHEAD_DISTANCE = 40.0;
-    const cameraLookAtTarget = currentPoint.clone().add(tangent.clone().multiplyScalar(LOOK_AHEAD_DISTANCE));
+    const cameraLookAtTarget = _reusableVector4.copy(currentPoint).add(_reusableVector1.copy(tangent).multiplyScalar(LOOK_AHEAD_DISTANCE));
     camera.lookAt(cameraLookAtTarget);
 
     // --- Effects and Visuals ---
@@ -2472,20 +2567,32 @@ function animate() {
       const leftRail = trackGroup.getObjectByName('leftRail') as THREE.Mesh;
       const rightRail = trackGroup.getObjectByName('rightRail') as THREE.Mesh;
 
-      if (storm.active && leftRail && rightRail && !sketchPass.enabled) {
-        updateRailEqualizer(leftRail, frequencyData);
-        updateRailEqualizer(rightRail, frequencyData);
-      } else if (leftRail && rightRail && (leftRail.userData.isDeformed || rightRail.userData.isDeformed)) {
-        // Если шторм неактивен, но рейлинги все еще деформированы,
-        // возвращаем их в исходное состояние.
-        leftRail.geometry.attributes.position.copy(leftRail.userData.originalVertices);
-        rightRail.geometry.attributes.position.copy(rightRail.userData.originalVertices);
+      if (storm.active && !sketchPass.enabled) {
+        // Получаем значения частот
+        const bassValue = (frequencyData[2] + frequencyData[3] + frequencyData[4]) / 3 / 255.0;
+        const midValue = frequencyData[Math.floor(frequencyData.length / 2)] / 255.0;
+        const trebleValue = frequencyData[frequencyData.length - 20] / 255.0;
 
-        leftRail.geometry.attributes.position.needsUpdate = true;
-        rightRail.geometry.attributes.position.needsUpdate = true;
-
-        leftRail.userData.isDeformed = false;
-        rightRail.userData.isDeformed = false;
+        // Обновляем uniforms для левого и правого рельса
+        [leftRail, rightRail].forEach(rail => {
+          if (rail && rail.material instanceof THREE.ShaderMaterial) {
+            const uniforms = rail.material.uniforms;
+            uniforms.uBass.value = bassValue;
+            uniforms.uMid.value = midValue;
+            uniforms.uTreble.value = trebleValue;
+            uniforms.uTime.value = audioContext.currentTime;
+          }
+        });
+      } else {
+        // Если шторм неактивен, просто сбрасываем значения для "затухания" эффекта
+        [leftRail, rightRail].forEach(rail => {
+          if (rail && rail.material instanceof THREE.ShaderMaterial) {
+            const uniforms = rail.material.uniforms;
+            uniforms.uBass.value *= 0.9; // Плавно уменьшаем до нуля
+            uniforms.uMid.value *= 0.9;
+            uniforms.uTreble.value *= 0.9;
+          }
+        });
       }
     }
 
@@ -2936,7 +3043,9 @@ const _lookAtQuat = new THREE.Quaternion();
 function updateVideoScreensPosition() {
   if (!videoScreensGroup.visible) return;
 
-  // --- НАСТРОЙКИ "ГАЛЕРЕИ" С ИСПРАВЛЕННЫМИ ЗНАЧЕНИЯМИ ---
+  const _playerFrame = { point: new THREE.Vector3(), tangent: new THREE.Vector3(), normal: new THREE.Vector3(), binormal: new THREE.Vector3() };
+  const _screenFrameForLoop = { point: new THREE.Vector3(), tangent: new THREE.Vector3(), normal: new THREE.Vector3(), binormal: new THREE.Vector3() };
+
   // 1. ДЕЛАЕМ ЭКРАНЫ БЛИЖЕ
   const START_AHEAD_UNITS = 15;   // Первый экран ближе.
   const SPACING_UNITS = 25;       // Расстояние между экранами.
@@ -2944,7 +3053,8 @@ function updateVideoScreensPosition() {
   const VERTICAL_OFFSET_UNITS = 5;
   // --------------------------------------------------------
 
-  const playerLookAtTarget = getInterpolatedFrame(playerProgress).point;
+  getInterpolatedFrame(playerProgress, _playerFrame);
+  const playerLookAtTarget = _playerFrame.point;
 
   videoScreensGroup.children.forEach((screen, index) => {
     const isLeftSide = index < NUM_SCREENS / 2;
@@ -2959,7 +3069,7 @@ function updateVideoScreensPosition() {
     }
     screen.visible = true;
 
-    const screenFrame = getInterpolatedFrame(screenProgress);
+    const screenFrame = getInterpolatedFrame(screenProgress, _screenFrameForLoop);
 
     // Расчет позиции (остается без изменений, он верный)
     _screenPos.copy(screenFrame.point)

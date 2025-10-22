@@ -1,6 +1,5 @@
 declare const jsmediatags: any;
 
-// --- Imports ---
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
@@ -12,10 +11,9 @@ import { gsap } from "gsap";
 
 const SketchShader = {
   uniforms: {
-    'tDiffuse': { value: null }, // Текстура с предыдущего шага рендеринга
-    'resolution': { value: new THREE.Vector2() } // Разрешение экрана для точных вычислений
+    'tDiffuse': { value: null },
+    'resolution': { value: new THREE.Vector2() }
   },
-  // Вершинный шейдер (остается стандартным)
   vertexShader: `
     varying vec2 vUv;
     void main() {
@@ -23,7 +21,6 @@ const SketchShader = {
       gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
     }
   `,
-  // Фрагментный шейдер (здесь вся магия)
   fragmentShader: `
     uniform sampler2D tDiffuse;
     uniform vec2 resolution;
@@ -89,27 +86,20 @@ const RailEqualizerMaterial = {
     void main() {
       vNormal = normal;
       
-      // --- НАСТРОЙКИ ЭФФЕКТА (как в JS) ---
       const float BASS_INFLUENCE = 1.4;
       const float MID_WAVE_SPEED = 0.5;
       const float TREBLE_FLICKER = 0.1;
       
-      // Генерация "случайного" числа для мерцания
       float pseudoRandom = fract(sin(dot(position.xyz, vec3(12.9898, 78.233, 151.7182))) * 43758.5453);
       
-      // 1. Формируем основную волну
       float wave = sin(position.z * uMid * MID_WAVE_SPEED + uTime * 5.0);
       
-      // 2. Определяем амплитуду (высоту) волны на основе басов
       float amplitude = uBass * BASS_INFLUENCE;
       
-      // 3. Добавляем высокочастотный "треск"
       float flicker = (pseudoRandom - 0.5) * uTreble * TREBLE_FLICKER;
       
-      // 4. Складываем все вместе для финального смещения
       float displacement = amplitude * wave + flicker;
       
-      // Смещаем вершину вдоль ее нормали
       vec3 newPosition = position + normal * displacement;
       
       gl_Position = projectionMatrix * modelViewMatrix * vec4(newPosition, 1.0);
@@ -122,7 +112,6 @@ const RailEqualizerMaterial = {
     varying vec3 vNormal;
     
     void main() {
-      // Простое затенение на основе нормалей для придания объема
       float light = clamp(dot(vNormal, vec3(0.5, 0.5, 1.0)), 0.0, 1.0);
       gl_FragColor = vec4(emissive * (light + emissiveIntensity), 1.0);
     }
@@ -225,18 +214,17 @@ let trackFrames: {
   binormal: THREE.Vector3;
 }[] = [];
 let playerProgress = 0;
-let lastPlayerProgress = 0; // To track progress between frames for accurate collision
+let lastPlayerProgress = 0;
 let songData: { duration: number, energyMap: number[] } | null = null;
 let gameStarted = false;
 let isPaused = false;
 let consecutiveHits = 0;
 let currentRankIndex = -1;
 let previousRankIndex = -1;
-let targetPlayerLane = 1; // The lane the player is moving towards
-let actualPlayerLane = 1; // The player's current physical lane (can be fractional)
-const keyState = {left: false, right: false}; // Keyboard state for controls
-let timeInRedZone = 0; // Tracks how long player is in a high-energy zone
-let isSketchEffectToggledOn = false;
+let targetPlayerLane = 1;
+let actualPlayerLane = 1;
+const keyState = { left: false, right: false };
+let timeInRedZone = 0;
 let isGpuPrewarmed = false;
 let activeTransition: { inProgress: boolean, onComplete: () => void } = {
   inProgress: false,
@@ -251,7 +239,7 @@ const rankHistory: number[] = [];
 // --- Color & Effects State ---
 let currentColor = new THREE.Color(0x00bfff);
 let lerpedEnergy = 0;
-let hyperspaceEffect = {active: false, timer: 0, duration: 1.5}; // Increased duration for a better effect
+let hyperspaceEffect = { active: false, timer: 0, duration: 1.5 };
 let lastHyperspaceTriggerTime = -Infinity;
 let hyperspaceJumpCount = 0;
 
@@ -270,8 +258,7 @@ let storm = {
 let lightningBolts: any[] = [];
 const MAX_BOLTS_IN_POOL = 50; // Пул объектов для молний, чтобы не создавать их на лету
 
-const NORMAL_SKY_COLOR = new THREE.Color(0x00aaff); // Базовый цвет туманностей/фона
-const SSS_SKY_COLOR = new THREE.Color(0x5c001f); // Темно-бордовый для SSS ранга
+const NORMAL_SKY_COLOR = new THREE.Color(0x00aaff);
 let currentSkyColor = NORMAL_SKY_COLOR.clone();
 
 // --- Game Constants ---
@@ -311,12 +298,12 @@ let nextWormholeSpawnTime = 0;
 let hasSketchModeBeenTriggeredThisSong = false;
 
 let circularFramesGroup: THREE.Group;
-let tunnelGroup: THREE.Group; // Эта группа теперь будет содержать отдельные сегменты
+let tunnelGroup: THREE.Group;
 const circularFrames: any[] = [];
-const tunnels: any[] = []; // Этот массив теперь будет хранить инфо о СЕГМЕНТАХ
+const tunnels: any[] = [];
 const FRAME_POOL_SIZE = 30;
 const framePool: THREE.Mesh[] = [];
-const TUNNEL_SEGMENT_POOL_SIZE = 50; // Увеличиваем пул, так как сегментов много
+const TUNNEL_SEGMENT_POOL_SIZE = 50;
 const tunnelSegmentPool: THREE.Mesh[] = [];
 let cityFadeIn = { active: false, progress: 0, duration: 1.5 };
 
@@ -426,62 +413,23 @@ function createTunnelSegmentMesh(): THREE.Mesh {
 
   const segment = new THREE.Mesh(segmentGeometry, segmentMaterial);
 
-  // Включаем свечение для всего объекта
   segment.layers.enable(BLOOM_SCENE);
 
   return segment;
 }
 
 function createCircularFrameMesh(): THREE.Mesh {
-  const frameGeometry = new THREE.TorusGeometry(18, 0.5, 16, 100); // Геометрия кольца
+  const frameGeometry = new THREE.TorusGeometry(18, 0.5, 16, 100);
   const frameMaterial = new THREE.MeshStandardMaterial({
-    color: 0x00ff00, // Начальный цвет, будет меняться
-    emissive: 0x00ff00, // Этот цвет будет светиться
+    color: 0x00ff00,
+    emissive: 0x00ff00,
     emissiveIntensity: 1.5,
     metalness: 0.5,
     roughness: 0.3,
   });
   const frame = new THREE.Mesh(frameGeometry, frameMaterial);
-  frame.layers.enable(BLOOM_SCENE); // Включаем для эффекта свечения (bloom)
+  frame.layers.enable(BLOOM_SCENE);
   return frame;
-}
-
-// Возвращаем функцию создания тоннеля
-function createTunnelMesh(): THREE.Group {
-  const tunnel = new THREE.Group();
-  const tunnelSegments = 10; // Тоннель будет состоять из 10 сегментов
-  const segmentLength = 20;  // Длина каждого сегмента
-  const tunnelRadius = 20;   // Радиус тоннеля
-
-  // Геометрия для стен тоннеля
-  const segmentGeometry = new THREE.CylinderGeometry(tunnelRadius, tunnelRadius, segmentLength, 32, 1, true);
-  const segmentMaterial = new THREE.MeshStandardMaterial({
-    color: 0x1a1a1a,
-    side: THREE.BackSide, // Рендерим внутреннюю часть цилиндра
-    roughness: 0.8
-  });
-
-  // Геометрия для светящихся колец
-  const ringGeometry = new THREE.TorusGeometry(tunnelRadius, 0.3, 16, 100);
-  const ringMaterial = new THREE.MeshStandardMaterial({
-    color: 0x00ff00,
-    emissive: 0x00ff00,
-    emissiveIntensity: 2.0
-  });
-
-  // Создаем сегменты и кольца в цикле
-  for (let i = 0; i < tunnelSegments; i++) {
-    const segment = new THREE.Mesh(segmentGeometry, segmentMaterial);
-    segment.position.z = -i * segmentLength;
-    tunnel.add(segment);
-
-    const ring = new THREE.Mesh(ringGeometry, ringMaterial);
-    ring.position.z = -i * segmentLength - segmentLength / 2;
-    ring.rotation.x = Math.PI / 2;
-    ring.layers.enable(BLOOM_SCENE);
-    tunnel.add(ring);
-  }
-  return tunnel;
 }
 
 function pregenerateEnvironmentElements(energyMap: number[], duration: number) {
@@ -494,11 +442,9 @@ function pregenerateEnvironmentElements(energyMap: number[], duration: number) {
   tunnels.length = 0;
 
   const tunnelLength = 0.05;
-  // Задаем случайную точку старта в середине трека (между 45% и 55%)
   const startProgress = 0.45 + Math.random() * 0.1;
   const endProgress = startProgress + tunnelLength;
 
-  // Добавляем в массив единственный объект тоннеля
   tunnels.push({
     startProgress: startProgress,
     endProgress: endProgress
@@ -506,43 +452,37 @@ function pregenerateEnvironmentElements(energyMap: number[], duration: number) {
 }
 
 function generateTunnels() {
-  // Очищаем старые тоннели, если они были
   while(tunnelGroup.children.length > 0){
     tunnelGroup.remove(tunnelGroup.children[0]);
   }
 
   const tunnelMaterial = new THREE.MeshBasicMaterial({
-    side: THREE.BackSide, // Рендерим внутреннюю часть
+    side: THREE.BackSide,
     toneMapped: false,
     transparent: true,
     opacity: 0.35
   });
 
-  // Проходим по всем запланированным тоннелям
   for (const tunnelData of tunnels) {
-    // 1. Вырезаем нужный кусок пути из общего трека
     const totalFrames = trackFrames.length - 1;
     const startIndex = Math.floor(tunnelData.startProgress * totalFrames);
     const endIndex = Math.ceil(tunnelData.endProgress * totalFrames);
     const tunnelPathPoints = trackFrames.slice(startIndex, endIndex).map(f => f.point);
 
-    if (tunnelPathPoints.length < 2) continue; // Пропускаем, если точек для пути нет
+    if (tunnelPathPoints.length < 2) continue;
 
-    // 2. Создаем кривую ТОЛЬКО для этого тоннеля
     const tunnelCurve = new THREE.CatmullRomCurve3(tunnelPathPoints);
 
-    // 3. Создаем ЕДИНУЮ БЕСШОВНУЮ ТРУБУ по этой кривой
     const tunnelGeometry = new THREE.TubeGeometry(
       tunnelCurve,
-      tunnelPathPoints.length * 2, // Сегменты вдоль
-      48,                        // Радиус
-      16,                        // Сегменты по радиусу
-      false                      // Не замкнутый
+      tunnelPathPoints.length * 2,
+      48,
+      16,
+      false
     );
 
-    // 4. Создаем цельный объект и добавляем его
     const tunnelMesh = new THREE.Mesh(tunnelGeometry, tunnelMaterial.clone());
-    tunnelMesh.layers.enable(BLOOM_SCENE); // Включаем свечение для всей трубы
+    tunnelMesh.layers.enable(BLOOM_SCENE);
     tunnelGroup.add(tunnelMesh);
   }
 }
@@ -557,7 +497,7 @@ async function loadPlayerModel(): Promise<THREE.Group> {
         const box = new THREE.Box3().setFromObject(modelGroup);
         const size = box.getSize(new THREE.Vector3());
         const maxDim = Math.max(size.x, size.y, size.z);
-        const scale = 6 / maxDim; // Increased scale for better visibility
+        const scale = 6 / maxDim;
         modelGroup.scale.set(scale, scale, scale);
 
         const newBox = new THREE.Box3().setFromObject(modelGroup);
@@ -576,30 +516,23 @@ async function loadPlayerModel(): Promise<THREE.Group> {
 }
 
 function handleTouchStart(event: TouchEvent) {
-  // Предотвращаем стандартное поведение браузера (например, прокрутку страницы)
   event.preventDefault();
 
-  // Получаем X-координату первого касания
   const touchX = event.touches[0].clientX;
-  // Находим середину экрана
   const screenMidpoint = window.innerWidth / 2;
 
   if (touchX < screenMidpoint) {
-    // Если касание в левой половине, имитируем нажатие "влево"
     keyState.left = true;
-    keyState.right = false; // Убедимся, что правая кнопка "отпущена"
+    keyState.right = false;
   } else {
-    // Если касание в правой половине, имитируем нажатие "вправо"
     keyState.right = true;
-    keyState.left = false; // Убедимся, что левая кнопка "отпущена"
+    keyState.left = false;
   }
 }
 
 function handleTouchEnd(event: TouchEvent) {
-  // Предотвращаем стандартное поведение
   event.preventDefault();
 
-  // Когда пользователь убирает палец, "отпускаем" обе кнопки
   keyState.left = false;
   keyState.right = false;
 }
@@ -618,19 +551,17 @@ function togglePause() {
   }
 }
 
-// --- Новые глобальные переменные ---
 const cityChunks: THREE.Group[] = [];
-const CHUNK_SIZE = 2000; // Размер одного куска города (2000x2000 юнитов)
-const NUM_CHUNKS_AXIS = 3; // Создаем сетку 3x3
+const CHUNK_SIZE = 2000;
+const NUM_CHUNKS_AXIS = 3;
 
-// --- ЗАМЕНИТЕ ВАШУ ФУНКЦИЮ createCityEnvironment НА ЭТУ ---
 function createCityEnvironment() {
   const textureLoader = new THREE.TextureLoader();
   const gridTexture = textureLoader.load('assets/images/grid.png');
 
   gridTexture.wrapS = THREE.RepeatWrapping;
   gridTexture.wrapT = THREE.RepeatWrapping;
-  gridTexture.repeat.set(20, 20); // Повторяем сетку 20x20 раз на каждом чанке
+  gridTexture.repeat.set(20, 20);
 
   cityGroup = new THREE.Group();
   cityGroup.visible = false;
@@ -647,7 +578,6 @@ function createCityEnvironment() {
 
   const CORRIDOR_WIDTH = 400;
 
-  // Создаем сетку чанков 3x3
   for (let x = 0; x < NUM_CHUNKS_AXIS; x++) {
     for (let z = 0; z < NUM_CHUNKS_AXIS; z++) {
       const chunk = new THREE.Group();
@@ -659,7 +589,6 @@ function createCityEnvironment() {
         (z - 1) * CHUNK_SIZE
       );
 
-      // --- Создаем здания для этого чанка ---
       const instancedBuildings = new THREE.InstancedMesh(buildingGeometry, buildingMaterial, buildingCountPerChunk);
       const dummy = new THREE.Object3D();
       for (let i = 0; i < buildingCountPerChunk; i++) {
@@ -682,13 +611,12 @@ function createCityEnvironment() {
       instancedBuildings.instanceMatrix.needsUpdate = true;
       chunk.add(instancedBuildings);
 
-      // --- Создаем землю для этого чанка ---
       const groundGeometry = new THREE.PlaneGeometry(CHUNK_SIZE, CHUNK_SIZE);
-      const groundMaterial = new THREE.MeshBasicMaterial({ // <<-- ВАЖНО: MeshBasicMaterial для сетки
+      const groundMaterial = new THREE.MeshBasicMaterial({
         map: gridTexture,
-        color: 0x6a00ff, // Цвет линий сетки
+        color: 0x6a00ff,
         transparent: true,
-        blending: THREE.AdditiveBlending // Режим смешивания для красивого свечения
+        blending: THREE.AdditiveBlending
       });
       const ground = new THREE.Mesh(groundGeometry, groundMaterial);
       ground.rotation.x = -Math.PI / 2;
@@ -703,22 +631,17 @@ function createCityEnvironment() {
 }
 
 function setActiveEnvironment(env: EnvironmentState) {
-  // Эта функция теперь меняет ТОЛЬКО фон и туман.
-  // Она больше НЕ включает видимость тяжелых объектов.
-
   if (env === EnvironmentState.SPACE) {
-    if (spaceGroup) spaceGroup.visible = true; // Космос (звезды-точки) "дешевый", его можно.
+    if (spaceGroup) spaceGroup.visible = true;
     scene.fog = new THREE.Fog(0x000000, 10, 250);
     scene.background = new THREE.Color(0x000000);
 
   } else if (env === EnvironmentState.CITY) {
-    // if (cityBackgroundSphere) cityBackgroundSphere.visible = true; // <<< УБРАНО
     const fogColor = 0x1a001a;
     scene.fog = new THREE.FogExp2(fogColor, 0.0015);
     scene.background = new THREE.Color(fogColor);
 
   } else if (env === EnvironmentState.SOLAR_SYSTEM) {
-    // Логика для включения skySphere отсюда тоже УБРАНА
     scene.fog = null;
     scene.background = new THREE.Color(0x000000);
   }
@@ -747,17 +670,15 @@ function createSolarSystemEnvironment() {
 
   const textureLoader = new THREE.TextureLoader();
 
-  // 1. Создаем фоновую "небесную сферу"
   const skySphereGeo = new THREE.SphereGeometry(2000, 64, 32);
   const skySphereMat = new THREE.MeshBasicMaterial({
-    map: textureLoader.load('assets/images/milky_way.jpg'), // Ваша текстура космоса
+    map: textureLoader.load('assets/images/milky_way.jpg'),
     side: THREE.BackSide,
     fog: false
   });
   const skySphere = new THREE.Mesh(skySphereGeo, skySphereMat);
   solarSystemGroup.add(skySphere);
 
-  // 2. Создаем несколько планет
   const planetData = [
     { texture: 'planet_earth.webp', size: 120, position: new THREE.Vector3(-800, 150, -500) },
     { texture: 'planet_mars.jpg', size: 80, position: new THREE.Vector3(950, -100, -1200) },
@@ -766,7 +687,6 @@ function createSolarSystemEnvironment() {
 
   planetData.forEach(data => {
     const planetGeo = new THREE.SphereGeometry(data.size, 32, 32);
-    // MeshStandardMaterial, чтобы планеты реагировали на свет, выглядя объемными
     const planetMat = new THREE.MeshStandardMaterial({
       map: textureLoader.load(`assets/images/${data.texture}`),
       roughness: 0.9,
@@ -782,32 +702,20 @@ function createSolarSystemEnvironment() {
 
 
 function updateCityChunks() {
-  // Этот вспомогательный объект нужен, чтобы не создавать новый вектор каждый кадр
   const _tempVec3 = new THREE.Vector3();
 
-  // Перебираем все чанки города
   cityChunks.forEach(chunk => {
-    // Получаем МИРОВУЮ позицию чанка (а не локальную)
     const chunkWorldPosition = chunk.getWorldPosition(_tempVec3);
 
-    // Вычисляем расстояние от камеры до чанка
     const distanceToChunkZ = camera.position.z - chunkWorldPosition.z;
     const distanceToChunkX = camera.position.x - chunkWorldPosition.x;
 
-    // --- Логика "телепортации" ---
-
-    // Если чанк оказался слишком далеко позади по оси Z...
     if (distanceToChunkZ > CHUNK_SIZE * 1.5) {
-      // ...перемещаем его на всю длину сетки (3 чанка) вперед
       chunk.position.z -= NUM_CHUNKS_AXIS * CHUNK_SIZE;
-    }
-    // Если чанк оказался слишком далеко впереди...
-    else if (distanceToChunkZ < -CHUNK_SIZE * 1.5) {
-      // ...перемещаем его назад
+    } else if (distanceToChunkZ < -CHUNK_SIZE * 1.5) {
       chunk.position.z += NUM_CHUNKS_AXIS * CHUNK_SIZE;
     }
 
-    // То же самое для оси X, на случай если трек сильно поворачивает
     if (distanceToChunkX > CHUNK_SIZE * 1.5) {
       chunk.position.x -= NUM_CHUNKS_AXIS * CHUNK_SIZE;
     }
@@ -822,8 +730,6 @@ function createWormholeMesh(isBlackHole: boolean): THREE.Mesh {
   let material;
 
   if (isBlackHole) {
-    // Черная дыра должна быть видна на белом фоне скетча.
-    // Сделаем ее черной с тонким, едва заметным белым контуром.
     material = new THREE.MeshBasicMaterial({
       color: 0x000000,
       wireframe: true
@@ -849,7 +755,6 @@ function trySpawnWhiteHole() {
     isRankHighEnough &&
     !hasSketchModeBeenTriggeredThisSong) {
 
-    // Создаем новую белую дыру
     const wormholeMesh = getFromPool(wormholePool, () => createWormholeMesh(false));
 
     const SPAWN_TIME_AHEAD = 2.0;
@@ -862,7 +767,6 @@ function trySpawnWhiteHole() {
       collected: false
     });
 
-    // Устанавливаем время для следующего возможного спавна (случайный интервал от 20 до 40 секунд)
     nextWormholeSpawnTime = audioContext.currentTime + 20 + Math.random() * 20;
   }
 }
@@ -871,19 +775,15 @@ function updateSpecialEvents() {
   for (const event of specialEventObjects) {
     if (event.collected || !event.mesh) continue;
 
-    // Позиционируем на трассе (всегда в центре)
     const frame = getInterpolatedFrame(event.progress);
     const point = frame.point.clone();
     event.mesh.position.copy(point);
 
-    // Заставляем вращаться для динамики
     event.mesh.rotation.x += 0.05;
     event.mesh.rotation.y += 0.02;
 
-    // Ориентируем перпендикулярно трассе
     event.mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), frame.tangent);
 
-    // Убираем, если пролетели мимо
     if (playerProgress > event.progress + 0.01) {
       event.collected = true;
       recycleObject(event.mesh, wormholePool);
@@ -895,20 +795,17 @@ function checkSpecialCollisions() {
   for (const event of specialEventObjects) {
     if (event.collected) continue;
 
-    // Проверяем пересечение
     if (playerProgress >= event.progress && lastPlayerProgress < event.progress) {
       event.collected = true;
       recycleObject(event.mesh, wormholePool);
 
       if (event.type === 'white_hole') {
-        // --- АКТИВИРУЕМ РЕЖИM СКЕТЧА ---
         isSketchModeActive = true;
         sketchModeTimer = SKETCH_MODE_DURATION;
         sketchPass.enabled = true;
 
         hasSketchModeBeenTriggeredThisSong = true;
 
-        // Создаем черную дыру для выхода в конце таймера
         const exitProgress = playerProgress + ((SKETCH_MODE_DURATION - 1) / songData.duration);
         const exitHoleMesh = getFromPool(wormholePool, () => createWormholeMesh(true));
         specialEventObjects.push({
@@ -919,14 +816,12 @@ function checkSpecialCollisions() {
         });
 
       } else if (event.type === 'black_hole') {
-        // --- ВЫХОДИМ ИЗ РЕЖИМА СКЕТЧА ---
         isSketchModeActive = false;
         sketchModeTimer = 0;
         sketchPass.enabled = false;
       }
     }
   }
-  // Очищаем массив от собранных объектов
   for (let i = specialEventObjects.length - 1; i >= 0; i--) {
     if (specialEventObjects[i].collected) {
       specialEventObjects.splice(i, 1);
@@ -935,16 +830,13 @@ function checkSpecialCollisions() {
 }
 
 async function init() {
-  // Update UI for loading
   soundManager.loadSounds();
   startPrompt.textContent = 'Loading spaceship...';
   fileLabel.classList.add('hidden');
   fileInput.disabled = true;
 
-  // Basic scene setup
   scene = new THREE.Scene();
 
-  // Add lighting to show model textures
   const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
   scene.add(ambientLight);
   const directionalLight = new THREE.DirectionalLight(0xffffff, 1.5);
@@ -960,18 +852,16 @@ async function init() {
   renderer.setPixelRatio(window.devicePixelRatio);
   renderer.setClearColor(0x000000);
 
-  // Load model before proceeding
   try {
     player = await loadPlayerModel();
     scene.add(player);
-    player.visible = false; // Keep it hidden until game starts
+    player.visible = false;
   } catch (error) {
     startPrompt.textContent = 'Error loading assets. Please refresh.';
     startPrompt.style.color = '#f55';
     return;
   }
 
-  // Continue with the rest of the scene
   backgroundSphere = createBackgroundSphere();
   scene.add(backgroundSphere);
   backgroundSphere.visible = true;
@@ -998,11 +888,11 @@ async function init() {
   bloomPass.radius = 0.5;
 
   composer = new EffectComposer(renderer);
-  composer.addPass(renderScene); // Сначала рендерим основную сцену
-  composer.addPass(bloomPass);   // Затем добавляем свечение
+  composer.addPass(renderScene);
+  composer.addPass(bloomPass);
 
   bloomComposer = new EffectComposer(renderer);
-  bloomComposer.renderToScreen = false; // Не выводим его на экран
+  bloomComposer.renderToScreen = false;
   bloomComposer.addPass(renderScene);
   bloomComposer.addPass(bloomPass);
 
@@ -1010,7 +900,7 @@ async function init() {
     new THREE.ShaderMaterial({
       uniforms: {
         baseTexture: { value: null },
-        bloomTexture: { value: bloomComposer.renderTarget2.texture } // Результат работы bloomComposer
+        bloomTexture: { value: bloomComposer.renderTarget2.texture }
       },
       vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 ); }`,
       fragmentShader: `
@@ -1070,7 +960,7 @@ async function init() {
   sketchPass = new ShaderPass(SketchShader);
   sketchPass.uniforms.resolution.value.x = window.innerWidth * window.devicePixelRatio;
   sketchPass.uniforms.resolution.value.y = window.innerHeight * window.devicePixelRatio;
-  sketchPass.enabled = false; // Изначально эффект выключен
+  sketchPass.enabled = false;
   composer.addPass(sketchPass);
 
   spaceGroup = new THREE.Group();
@@ -1087,7 +977,6 @@ async function init() {
   for (let i = 0; i < FRAME_POOL_SIZE; i++) {
     framePool.push(createCircularFrameMesh());
   }
-  // Создаем пул для СЕГМЕНТОВ тоннеля
   for (let i = 0; i < TUNNEL_SEGMENT_POOL_SIZE; i++) {
     tunnelSegmentPool.push(createTunnelSegmentMesh());
   }
@@ -1142,7 +1031,6 @@ async function init() {
   createCityEnvironment();
   createSolarSystemEnvironment();
 
-  // Unlock UI
   startPrompt.textContent = 'Enter a song to start your ride (VPN may be required)';
   fileLabel.classList.remove('hidden');
   fileInput.disabled = false;
@@ -1271,7 +1159,7 @@ function createNebulas() {
     opacity: 0.5,
     fog: false,
     blending: THREE.AdditiveBlending
-  }); // Increased size
+  });
   return new THREE.Points(geo, mat);
 }
 
@@ -1398,14 +1286,13 @@ function generateLightningGeometry(startPoint: THREE.Vector3, endPoint: THREE.Ve
   let distanceTraveled = 0;
 
   while (distanceTraveled < totalDistance) {
-    // Увеличиваем длину сегментов и случайное отклонение для более "жирных" молний
-    const segmentLength = 20 + Math.random() * 40; // Было: 10 + Math.random() * 20
+    const segmentLength = 20 + Math.random() * 40;
     currentPoint.add(direction.clone().multiplyScalar(segmentLength));
 
     const randomOffset = new THREE.Vector3(
-      (Math.random() - 0.5) * 50, // Было: 20
-      (Math.random() - 0.5) * 50, // Было: 20
-      (Math.random() - 0.5) * 50  // Было: 20
+      (Math.random() - 0.5) * 50,
+      (Math.random() - 0.5) * 50,
+      (Math.random() - 0.5) * 50
     );
     points.push(currentPoint.clone().add(randomOffset));
     distanceTraveled += segmentLength;
@@ -1417,21 +1304,17 @@ function generateLightningGeometry(startPoint: THREE.Vector3, endPoint: THREE.Ve
 function triggerLightning(frame: { point: THREE.Vector3, tangent: THREE.Vector3, normal: THREE.Vector3, binormal: THREE.Vector3 }) {
   if (!storm.lightningFlash || !storm.ambientLight) return;
 
-  // Получаем векторы из текущего кадра трассы
   const { point: currentPoint, normal: trackNormal, binormal, tangent } = frame;
 
-  // 1. Позиция вспышки: генерируем ее "НАД" игроком, используя trackNormal как "верх"
   const flashPosition = currentPoint.clone()
-    .add(trackNormal.clone().multiplyScalar(200 + Math.random() * 250)) // 200-450 единиц "вверх" от трассы
-    .add(binormal.clone().multiplyScalar((Math.random() - 0.5) * 500));  // Случайно влево/вправо от трассы
+    .add(trackNormal.clone().multiplyScalar(200 + Math.random() * 250))
+    .add(binormal.clone().multiplyScalar((Math.random() - 0.5) * 500));
 
   storm.lightningFlash.position.copy(flashPosition);
 
-  // 2. Вспышка света (без изменений)
   storm.lightningFlash.intensity = 100 + Math.random() * 50;
   storm.ambientLight.intensity = 0.5 + Math.random() * 0.3;
 
-  // 3. Создаем пучок молний, которые теперь тоже ориентированы правильно
   const boltsToCreate = 2 + Math.floor(Math.random() * 3);
   for (let i = 0; i < boltsToCreate; i++) {
     const bolt = lightningBolts.find(b => !b.userData.isActive);
@@ -1440,16 +1323,14 @@ function triggerLightning(frame: { point: THREE.Vector3, tangent: THREE.Vector3,
       let endPoint;
 
       if (Math.random() > 0.3) {
-        // "Облако-земля": молния бьет в точку ВПЕРЕДИ игрока, рядом с трассой
         endPoint = currentPoint.clone()
-          .add(tangent.clone().multiplyScalar(100 + Math.random() * 200)) // 100-300 единиц вперед по трассе
-          .add(binormal.clone().multiplyScalar((Math.random() - 0.5) * 400)) // Слева/справа от трассы
-          .add(trackNormal.clone().multiplyScalar(10)); // Чуть выше поверхности трассы
+          .add(tangent.clone().multiplyScalar(100 + Math.random() * 200))
+          .add(binormal.clone().multiplyScalar((Math.random() - 0.5) * 400))
+          .add(trackNormal.clone().multiplyScalar(10));
       } else {
-        // "Облако-облако": перекидывается на другую точку "в небе"
         endPoint = startPoint.clone()
-          .add(trackNormal.clone().multiplyScalar((Math.random() - 0.5) * 200)) // Смещаем по "вертикали"
-          .add(binormal.clone().multiplyScalar((Math.random() - 0.5) * 600)); // Смещаем по "горизонтали"
+          .add(trackNormal.clone().multiplyScalar((Math.random() - 0.5) * 200))
+          .add(binormal.clone().multiplyScalar((Math.random() - 0.5) * 600));
       }
 
       bolt.geometry.setAttribute('position', generateLightningGeometry(startPoint, endPoint));
@@ -1461,7 +1342,6 @@ function triggerLightning(frame: { point: THREE.Vector3, tangent: THREE.Vector3,
     }
   }
 
-  // 4. Звук грома (без изменений)
   setTimeout(() => {
     if (storm.thunderSounds.length > 0 && storm.active) {
       const sound = storm.thunderSounds[Math.floor(Math.random() * storm.thunderSounds.length)];
@@ -1501,7 +1381,7 @@ async function onFileSelect(event: Event) {
       .replace(/^\d+\s*[-.]?\s*/, '')
       // Заменяем разные тире на стандартный дефис
       .replace(/[—–_]/g, '-')
-      .trim(); // Убираем лишние пробелы
+      .trim();
   };
 
   const searchAndPreload = (query: string) => {
@@ -1583,7 +1463,7 @@ function onSearchInput() {
         const resultItem = document.createElement('div');
         resultItem.className = 'result-item';
         resultItem.textContent = song.title;
-        resultItem.title = song.title; // Для длинных названий
+        resultItem.title = song.title;
         resultItem.addEventListener('click', () => onSongSelectFromSearch(song));
         autocompleteResults.appendChild(resultItem);
       });
@@ -1656,7 +1536,6 @@ function updateEnvironmentElements() {
   const activationZone = playerProgress + BLOCK_VIEW_DISTANCE;
   const deactivationZone = playerProgress - 0.02;
 
-  // Обновление круглых рамок (работает правильно)
   for (const frameObj of circularFrames) {
     if (!frameObj.mesh && frameObj.progress > playerProgress && frameObj.progress < activationZone) {
       const frameMesh = getFromPool(framePool, createCircularFrameMesh);
@@ -1707,12 +1586,11 @@ async function analyzeAudioAndGenerateTrack(arrayBuffer: ArrayBuffer) {
 
   if (maxRms === 0) maxRms = 1;
   const normalizedEnergyMap = energyMap.map(rms => (rms / maxRms));
-  // More responsive smoothing
   const smoothedEnergyMap = smoothArray(normalizedEnergyMap, 3);
   songData = {duration, energyMap: smoothedEnergyMap};
 
   trackCurve = createTrackPath(smoothedEnergyMap, duration);
-  const trackSegments = Math.floor(duration * 30); // Lowered from 60 to 30 for performance
+  const trackSegments = Math.floor(duration * 30);
   trackFrames = generateTrackFrames(trackCurve, smoothedEnergyMap, trackSegments);
 
   pregenerateBlocks(smoothedEnergyMap);
@@ -1727,9 +1605,9 @@ async function analyzeAudioAndGenerateTrack(arrayBuffer: ArrayBuffer) {
 function generateTrackFrames(curve: THREE.CatmullRomCurve3, energyMap: number[], segments: number) {
   const frames = [];
   let lastUp = new THREE.Vector3(0, 1, 0);
-  const INTENSE_ROLL_THRESHOLD = 0.82; // Lowered threshold for more frequent corkscrews
-  const HILL_FREQUENCY = 0.4; // Controls how close the hills are. Lower is wider.
-  const HILL_AMPLITUDE = 2.5; // Controls the max height of hills.
+  const INTENSE_ROLL_THRESHOLD = 0.82;
+  const HILL_FREQUENCY = 0.4;
+  const HILL_AMPLITUDE = 2.5;
 
   for (let i = 0; i <= segments; i++) {
     const progress = i / segments;
@@ -1739,25 +1617,18 @@ function generateTrackFrames(curve: THREE.CatmullRomCurve3, energyMap: number[],
     const energyIndex = Math.min(Math.floor(progress * energyMap.length), energyMap.length - 1);
     const energy = energyMap[energyIndex] || 0;
 
-    // --- HILL GENERATION ---
-    // We need a stable "up" vector before applying roll.
     const preRollNormal = lastUp.clone();
     preRollNormal.projectOnPlane(tangent).normalize();
 
-    // Calculate hill height based on a sine wave and music energy.
     const hillOffset = Math.sin(i * HILL_FREQUENCY) * energy * HILL_AMPLITUDE;
     point.add(preRollNormal.clone().multiplyScalar(hillOffset));
-    // --- END HILL GENERATION ---
 
-    // Use a low-frequency sine wave for long, majestic rolls.
     const turnInfluence = Math.sin(progress * energyMap.length * 0.08);
 
     let rollDelta = 0;
-    // Only apply roll on very high energy parts to make it a special event
     if (energy > INTENSE_ROLL_THRESHOLD) {
-      // The amount of roll increases as energy goes from threshold to 1.0
       const rollIntensity = (energy - INTENSE_ROLL_THRESHOLD) / (1.0 - INTENSE_ROLL_THRESHOLD);
-      rollDelta = turnInfluence * rollIntensity * -1.5; // Tunable: -1.5 is the max roll factor
+      rollDelta = turnInfluence * rollIntensity * -1.5;
     }
 
     const normal = lastUp.clone();
@@ -1778,30 +1649,25 @@ function createTrackPath(energyMap: number[], duration: number): THREE.CatmullRo
   let vel = new THREE.Vector3(0, 0, 0);
   points.push(pos.clone());
 
-  // 1. Управляет ТОЛЬКО СКОРОСТЬЮ. Чем меньше, тем медленнее.
   const baseSegmentLengthPerSecond = 110;
 
-  // 2. Управляет ТОЛЬКО ФОРМОЙ ("растянутостью"). Чем больше, тем плавнее и шире повороты.
   const PATH_SCALE = 0.55;
 
-  const turnInfluence = 4.0;    // Сила влияния на повороты
-  const climbInfluence = 3.5;   // Сила влияния на подъемы
-  const damping = 0.96;         // "Трение", гасит резкие изменения
-  const centeringForce = 0.003; // Сила, возвращающая трек к центру
+  const turnInfluence = 4.0;
+  const climbInfluence = 3.5;
+  const damping = 0.96;
+  const centeringForce = 0.003;
 
   const timePerSegment = duration / energyMap.length;
 
   for (let i = 0; i < energyMap.length; i++) {
     const energy = energyMap[i];
 
-    // Расчет скорости (длины сегмента по оси Z)
     const speedMultiplier = 0.5 + energy * 2.5;
     const segmentLength = baseSegmentLengthPerSecond * timePerSegment * speedMultiplier;
 
-    // Расчет "эффектности" (чтобы на тихих участках трек был прямее)
     const effectMultiplier = Math.max(0, (energy - 0.3) / 0.6);
 
-    // Расчет сил, влияющих на форму, с учетом нового масштаба
     const turnForce = Math.sin(i * 0.15) * energy * turnInfluence * effectMultiplier * PATH_SCALE;
     const climbForce = (energy - 0.2) * climbInfluence * effectMultiplier * PATH_SCALE;
 
@@ -1812,11 +1678,9 @@ function createTrackPath(energyMap: number[], duration: number): THREE.CatmullRo
     vel.y += climbForce + centerPullY;
     vel.multiplyScalar(damping);
 
-    // Применяем скорость к координатам X и Y с учетом нового масштаба
     pos.x += vel.x * PATH_SCALE;
     pos.y += vel.y * PATH_SCALE;
 
-    // Движение вперед по оси Z остается неизменным (оно определяет скорость)
     pos.z -= segmentLength;
 
     points.push(pos.clone());
@@ -1899,7 +1763,6 @@ function createTrackMesh(frames: any[]) {
   return group;
 }
 
-// --- ОБНОВЛЕННАЯ ФУНКЦИЯ ДЛЯ НАСТОЯЩЕГО ЭФФЕКТА ЭКВАЛАЙЗЕРА ---
 function updateRailEqualizer(rail: THREE.Mesh, frequencyData: Uint8Array) {
   if (!rail || !rail.userData.originalVertices) return;
 
@@ -1908,41 +1771,32 @@ function updateRailEqualizer(rail: THREE.Mesh, frequencyData: Uint8Array) {
   const normals = rail.geometry.attributes.normal;
   const vertexCount = originalPositions.count;
 
-  // --- НАСТРОЙКИ ЭФФЕКТА (можете их менять) ---
-  const BASS_INFLUENCE = 1.4;     // Насколько сильно бас "надувает" волны
-  const MID_WAVE_SPEED = 0.5;    // Как часто идут волны (меньше = длиннее волны)
-  const TREBLE_FLICKER = 0.1;     // Сила "электрического" мерцания
+  const BASS_INFLUENCE = 1.4;  // Насколько сильно бас "надувает" волны
+  const MID_WAVE_SPEED = 0.5;  // Как часто идут волны
+  const TREBLE_FLICKER = 0.1;  // Сила электрического мерцания
 
-  // Получаем репрезентативные значения из разных частей спектра
   const bassValue = (frequencyData[2] + frequencyData[3] + frequencyData[4]) / 3 / 255.0;
   const midValue = frequencyData[Math.floor(frequencyData.length / 2)] / 255.0;
-  const trebleValue = frequencyData[frequencyData.length - 20] / 255.0; // Берем почти с конца
+  const trebleValue = frequencyData[frequencyData.length - 20] / 255.0;
 
   for (let i = 0; i < vertexCount; i++) {
-    // Получаем Z-координату вершины, чтобы волна шла вдоль трассы
     const oz = originalPositions.getZ(i);
 
-    // 1. Формируем основную волну
     const wave = Math.sin(oz * midValue * MID_WAVE_SPEED + audioContext.currentTime * 5);
 
-    // 2. Определяем амплитуду (высоту) волны на основе басов
     const amplitude = bassValue * BASS_INFLUENCE;
 
-    // 3. Добавляем высокочастотный "треск" на основе верхних частот
     const flicker = (Math.random() - 0.5) * trebleValue * TREBLE_FLICKER;
 
-    // 4. Складываем все вместе для финального смещения
     const displacement = amplitude * wave + flicker;
 
-    // Получаем исходную позицию и нормаль
     const ox = originalPositions.getX(i);
     const oy = originalPositions.getY(i);
-    const oz_pos = originalPositions.getZ(i); // Переименовал, чтобы не конфликтовать с oz выше
+    const oz_pos = originalPositions.getZ(i);
     const nx = normals.getX(i);
     const ny = normals.getY(i);
     const nz = normals.getZ(i);
 
-    // Смещаем вершину вдоль ее нормали
     currentPositions.setXYZ(
       i,
       ox + nx * displacement,
@@ -2048,7 +1902,6 @@ function createGreyBlock() {
     fog: false
   });
 
-  // 3. Создаем меш. Никакой обводки и свечения (bloom) больше нет.
   const mesh = new THREE.Mesh(geometry, material);
 
   return mesh;
@@ -2108,21 +1961,15 @@ function pregenerateBlocks(energyMap: number[]) {
       lastBlockProgress = progress;
 
     } else if (isMultiBlock) {
-      // 1. Решаем, сколько блоков мы хотим создать: один или два.
-      // Это создает больше разнообразия, чем всегда создавать по два.
       const numBlocksToSpawn = Math.random() < 0.5 ? 1 : 2;
 
-      // 2. Создаем массив со всеми доступными полосами.
       const availableLanes = [0, 1, 2];
 
-      // 3. "Тасуем" массив полос, чтобы выбор был случайным.
-      // Это предотвратит появление блоков чаще на левых полосах.
       for (let i = availableLanes.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [availableLanes[i], availableLanes[j]] = [availableLanes[j], availableLanes[i]];
       }
 
-      // 4. Создаем блоки в выбранных случайных полосах.
       for (let i = 0; i < numBlocksToSpawn; i++) {
         const lane = availableLanes[i];
         allBlocks.push({ progress, lane, type: 'color', mesh: null, collected: false });
@@ -2179,7 +2026,6 @@ function getInterpolatedFrame(progress: number, targetFrame = _reusableFrame) {
   targetFrame.binormal.lerpVectors(frame1.binormal, frame2.binormal, t).normalize();
 
 
-  // Re-orthogonalize the frame to be safe after interpolation
   targetFrame.normal.projectOnPlane(targetFrame.tangent).normalize();
   targetFrame.binormal.crossVectors(targetFrame.tangent, targetFrame.normal);
 
@@ -2220,15 +2066,11 @@ function updateBlocks() {
 function checkCollisions() {
   for (const block of allBlocks) {
     if (block.mesh && !block.collected && Math.round(actualPlayerLane) === block.lane) {
-      // Проверяем, что игрок пересек блок в этом кадре
       if (lastPlayerProgress < block.progress && playerProgress >= block.progress) {
         if (block.type === 'color') {
-          // --- УСПЕШНОЕ ПОПАДАНИЕ ПО ЦВЕТНОМУ БЛОКУ ---
           soundManager.playSound('collision_color');
           consecutiveHits++;
 
-          // 1. Определяем текущий ранг
-          // Идем по рангам с конца, чтобы найти самый высокий достигнутый
           let newRankIndex = -1;
           for (let i = STYLE_RANKS.length - 1; i >= 0; i--) {
             if (consecutiveHits >= STYLE_RANKS[i].hitsNeeded) {
@@ -2238,24 +2080,22 @@ function checkCollisions() {
           }
           currentRankIndex = newRankIndex;
 
-          // 2. Рассчитываем очки с множителем
           const baseMultiplier = currentRankIndex > -1 ? STYLE_RANKS[currentRankIndex].multiplier : 1;
           const finalMultiplier = isSketchModeActive ? 10 : baseMultiplier;
           score += 10 * finalMultiplier;
           triggerPositiveBurst(block.mesh.position, block.mesh.material.color);
 
         } else {
-          // --- СТОЛКНОВЕНИЕ С СЕРЫМ БЛОКОМ ---
           if (!isSketchModeActive) {
             if (consecutiveHits > maxCombo) {
               maxCombo = consecutiveHits;
             }
             totalMisses++;
             soundManager.playSound('collision_stone');
-            consecutiveHits = 0; // Сбрасываем счетчик
+            consecutiveHits = 0;
             score = Math.max(0, score - 25);
 
-            // 1. Логика понижения ранга
+            // Логика понижения ранга
             if (currentRankIndex >= 4) { // Если ранг S, SS или SSS
               currentRankIndex = 2; // Падаем до B (индекс 2)
             } else if (currentRankIndex > 0) { // Если C, B, A
@@ -2264,7 +2104,6 @@ function checkCollisions() {
               currentRankIndex = -1; // Полный сброс
             }
 
-            // 2. Эффекты столкновения
             shakeTime = 0.4;
             shakeIntensity = 0.3;
             vignette.style.opacity = '1';
@@ -2272,7 +2111,6 @@ function checkCollisions() {
           }
         }
 
-        // Обновляем UI после любого столкновения
         scoreEl.textContent = score.toString();
         updateStyleUI();
 
@@ -2310,11 +2148,11 @@ function updateStyleUI() {
   const rankChanged = currentRankIndex !== previousRankIndex;
 
   if (rankChanged && currentRankIndex > previousRankIndex) {
-    if (currentRankIndex <= 1) { // Ранги D (0) и C (1)
+    if (currentRankIndex <= 1) {
       soundManager.playSound('matchsmall');
-    } else if (currentRankIndex <= 3) { // Ранги B (2) и A (3)
+    } else if (currentRankIndex <= 3) {
       soundManager.playSound('matchlarge');
-    } else { // Ранги S (4) и выше
+    } else {
       soundManager.playSound('matchhuge');
     }
   }
@@ -2333,7 +2171,7 @@ function updateStyleUI() {
     updateVideoScreensVisibility(false);
   }
 
-  const isStormActiveNow = currentRankIndex >= 4; // Ранг S или выше
+  const isStormActiveNow = currentRankIndex >= 4;
 
   if (isStormActiveNow && !storm.active) {
     storm.active = true;
@@ -2400,7 +2238,7 @@ function getTargetColor(energy: number): THREE.Color {
   const intenseHigh = new THREE.Color(0xdc143c);  // crimson
 
   const calmThreshold = 0.3;
-  const mediumThreshold = 0.7; // Raised threshold for yellow/orange
+  const mediumThreshold = 0.7;
 
   let targetColor = new THREE.Color();
 
@@ -2418,7 +2256,6 @@ function getTargetColor(energy: number): THREE.Color {
 }
 
 function updateSceneColors(targetColor: THREE.Color) {
-  // Lerp the current color towards the target for smooth transitions
   currentColor.lerp(targetColor, 0.08);
 
   (composer.passes[1] as UnrealBloomPass).strength = 0.6 + lerpedEnergy * 1.2;
@@ -2441,8 +2278,6 @@ function updateSceneColors(targetColor: THREE.Color) {
           child.material.color.copy(currentColor);
         }
       }
-      // Для всех остальных частей трассы (дорожное полотно, разделительные линии)
-      // мы НЕ ДЕЛАЕМ НИЧЕГО, и они сохраняют свой оригинальный темный и белый цвет.
     });
   }
 }
@@ -2460,7 +2295,6 @@ function animate() {
     const energyIndex = Math.min(Math.floor(playerProgress * songData.energyMap.length), songData.energyMap.length - 1);
     const currentEnergy = songData.energyMap[energyIndex] || 0;
 
-    // Use a lerped energy for smooth color and effect transitions
     lerpedEnergy = THREE.MathUtils.lerp(lerpedEnergy, currentEnergy, 0.05);
 
     updateBlockMovement(deltaTime, currentEnergy);
@@ -2468,11 +2302,9 @@ function animate() {
     analyser.getByteFrequencyData(frequencyData);
     const bass = (frequencyData[1] + frequencyData[2]) / 2 / 255;
 
-    // --- Core track vectors for this frame ---
     const currentFrame = getInterpolatedFrame(playerProgress, _reusableFrame);
     const { point: currentPoint, tangent, normal: trackNormal, binormal } = currentFrame;
 
-    // --- Player Logic ---
     if (keyState.left) {
       targetPlayerLane = 0;
     } else if (keyState.right) {
@@ -2488,7 +2320,7 @@ function animate() {
 
     const lookAheadProgress = 0.003;
     const futureProgress = Math.min(playerProgress + lookAheadProgress, 1.0);
-    const futureFrame = getInterpolatedFrame(futureProgress, { point: _reusableVector3, tangent: _reusableVector4, normal: _reusableVector2, binormal: _reusableVector1 }); // Используем временные векторы
+    const futureFrame = getInterpolatedFrame(futureProgress, { point: _reusableVector3, tangent: _reusableVector4, normal: _reusableVector2, binormal: _reusableVector1 });
 
     const futureHorizontalOffset = futureFrame.binormal.clone().multiplyScalar(THREE.MathUtils.lerp(LANE_POSITIONS[0], LANE_POSITIONS[2], actualPlayerLane / 2));
     const futureVerticalOffset = futureFrame.normal.clone().multiplyScalar(SHIP_HOVER_HEIGHT);
@@ -2510,7 +2342,6 @@ function animate() {
     camera.lookAt(cameraLookAtTarget);
 
     // --- Effects and Visuals ---
-
     if (storm.active && storm.lightningFlash && storm.ambientLight) {
       storm.lightningFlash.intensity = Math.max(0, storm.lightningFlash.intensity - 250 * deltaTime);
       storm.ambientLight.intensity = Math.max(0, storm.ambientLight.intensity - 2.0 * deltaTime);
@@ -2534,28 +2365,21 @@ function animate() {
       }
     }
 
-    // 2. Плавное изменение цвета фона для SSS ранга
     const isSssRank = currentRankIndex === STYLE_RANKS.length - 1;
-    // const targetBackgroundColor = isSssRank ? SSS_SKY_COLOR : new THREE.Color(0x000000); // Целевой цвет: бордовый или черный
+    // const targetBackgroundColor = isSssRank ? SSS_SKY_COLOR : new THREE.Color(0x000000);
 
-    // Убедимся, что scene.background инициализирован как цвет
     // if (!(scene.background instanceof THREE.Color)) {
     //   scene.background = new THREE.Color(0x000000);
     // }
     // (scene.background as THREE.Color).lerp(targetBackgroundColor, 0.05);
 
-    // 3. Цвет тумана должен соответствовать цвету фона для плавного перехода
     // scene.fog.color.copy(scene.background as THREE.Color);
 
-    // Применяем цвет и интенсивность к материалу
     if (backgroundSphere && (backgroundSphere.material as THREE.MeshStandardMaterial).emissive) {
-      // Сетка всегда следует за камерой
       backgroundSphere.position.copy(camera.position);
 
-      // Цвет сетки = цвет трассы
       (backgroundSphere.material as THREE.MeshStandardMaterial).emissive.copy(currentColor);
 
-      // Сетка светится ярче на высоких рангах
       const gridIntensity = isSssRank ? 1.0 : 0.2 + bass * 1.5;
       (backgroundSphere.material as THREE.MeshStandardMaterial).emissiveIntensity = gridIntensity;
     }
@@ -2568,12 +2392,10 @@ function animate() {
       const rightRail = trackGroup.getObjectByName('rightRail') as THREE.Mesh;
 
       if (storm.active && !sketchPass.enabled) {
-        // Получаем значения частот
         const bassValue = (frequencyData[2] + frequencyData[3] + frequencyData[4]) / 3 / 255.0;
         const midValue = frequencyData[Math.floor(frequencyData.length / 2)] / 255.0;
         const trebleValue = frequencyData[frequencyData.length - 20] / 255.0;
 
-        // Обновляем uniforms для левого и правого рельса
         [leftRail, rightRail].forEach(rail => {
           if (rail && rail.material instanceof THREE.ShaderMaterial) {
             const uniforms = rail.material.uniforms;
@@ -2584,11 +2406,10 @@ function animate() {
           }
         });
       } else {
-        // Если шторм неактивен, просто сбрасываем значения для "затухания" эффекта
         [leftRail, rightRail].forEach(rail => {
           if (rail && rail.material instanceof THREE.ShaderMaterial) {
             const uniforms = rail.material.uniforms;
-            uniforms.uBass.value *= 0.9; // Плавно уменьшаем до нуля
+            uniforms.uBass.value *= 0.9;
             uniforms.uMid.value *= 0.9;
             uniforms.uTreble.value *= 0.9;
           }
@@ -2628,36 +2449,30 @@ function animate() {
       cityFadeIn.progress += deltaTime / cityFadeIn.duration;
       const currentOpacity = Math.min(cityFadeIn.progress, 1.0);
 
-      // Напрямую меняем прозрачность ОДНОГО материала, который используют ВСЕ здания
       if (buildingMaterial) {
         (buildingMaterial as THREE.Material).opacity = currentOpacity;
       }
 
-      // Когда анимация завершена, отключаем ее
       if (cityFadeIn.progress >= 1.0) {
         cityFadeIn.active = false;
       }
     }
 
-    const FADE_START_TIME = songData.duration - 3; // Начать затухание за 3 секунды до конца
+    const FADE_START_TIME = songData.duration - 3;
     if (audioContext.currentTime > FADE_START_TIME) {
       const timeIntoFade = audioContext.currentTime - FADE_START_TIME;
       const fadeDuration = songData.duration - FADE_START_TIME;
       const fadeProgress = Math.min(timeIntoFade / fadeDuration, 1.0);
 
-      // Обновляем прозрачность плоскости
       (fadeOutPlane.material as THREE.MeshBasicMaterial).opacity = fadeProgress;
     }
 
-    // Позиционируем плоскость прямо перед камерой
     if (fadeOutPlane) {
       fadeOutPlane.position.copy(camera.position);
       fadeOutPlane.quaternion.copy(camera.quaternion);
-      // Смещаем немного вперед, чтобы она была видна
       fadeOutPlane.translateZ(-0.11);
     }
 
-    // HYPERSPACE LOGIC: Reactive trigger based on sustained time in a high-energy zone.
     const HYPERSPACE_THRESHOLD = 0.70;
     const HYPERSPACE_COOLDOWN = 40;
     const TIME_IN_RED_ZONE_TO_TRIGGER = 0.25;
@@ -2668,7 +2483,6 @@ function animate() {
       timeInRedZone = 0;
     }
 
-    // Check for trigger condition
     if (
       timeInRedZone >= TIME_IN_RED_ZONE_TO_TRIGGER &&
       !hyperspaceEffect.active &&
@@ -2689,7 +2503,6 @@ function animate() {
       const fromGroup = fromEnv === EnvironmentState.SPACE ? spaceGroup : (fromEnv === EnvironmentState.CITY ? cityGroup : solarSystemGroup);
       const toGroup = nextEnv === EnvironmentState.SPACE ? spaceGroup : (nextEnv === EnvironmentState.CITY ? cityGroup : solarSystemGroup);
 
-      // Длительность угасания/появления - половина от времени гиперпрыжка
       const fadeDuration = hyperspaceEffect.duration / 2;
 
       fade(fromGroup, 0, fadeDuration, () => {
@@ -2722,7 +2535,6 @@ function animate() {
       }, hyperspaceEffect.duration * 1000);
     }
 
-    // Dynamic FOV and Hyperspace Update
     let baseFov = 75 + currentEnergy * 20;
     const normalStarfieldMat = normalStarfield.material as THREE.PointsMaterial;
     const streaksMat = hyperspaceStreaks.material as THREE.LineBasicMaterial;
@@ -2731,36 +2543,30 @@ function animate() {
     if (hyperspaceEffect.active && hyperspaceEffect.timer > 0) {
       hyperspaceEffect.timer -= deltaTime;
 
-      // t is the overall progress of the effect, from 0 to 1
       const t = 1.0 - (hyperspaceEffect.timer / hyperspaceEffect.duration);
-      // effectProgress uses a sine curve to smoothly go from 0 -> 1 -> 0
       const effectProgress = Math.sin(t * Math.PI);
 
       baseFov += effectProgress * 80;
 
-      // --- Crossfade Opacity ---
       normalStarfieldMat.opacity = defaultStarOpacity * (1.0 - effectProgress);
       streaksMat.opacity = effectProgress;
       hyperspaceStreaks.visible = streaksMat.opacity > 0;
 
-      // --- Star Stretching ---
       const streakPositions = (hyperspaceStreaks.geometry.attributes.position as THREE.BufferAttribute).array as Float32Array;
-      const stretchLength = effectProgress * 500; // Max length of the streak
+      const stretchLength = effectProgress * 500;
 
       for (let i = 0; i < STAR_COUNT; i++) {
-        const i3 = i * 3; // Index for original star position
-        const i6 = i * 6; // Index for line segment (2 vertices)
+        const i3 = i * 3;
+        const i6 = i * 6;
 
         const headX = STAR_POSITIONS[i3 + 0];
         const headY = STAR_POSITIONS[i3 + 1];
         const headZ = STAR_POSITIONS[i3 + 2];
 
-        // Set the start point of the line (head)
         streakPositions[i6 + 0] = headX;
         streakPositions[i6 + 1] = headY;
         streakPositions[i6 + 2] = headZ;
 
-        // Set the end point of the line (tail) by stretching it along Z
         streakPositions[i6 + 3] = headX;
         streakPositions[i6 + 4] = headY;
         streakPositions[i6 + 5] = headZ - stretchLength;
@@ -2782,7 +2588,6 @@ function animate() {
         }
       }
     } else {
-      // Smoothly transition back to normal state
       normalStarfieldMat.opacity = THREE.MathUtils.lerp(normalStarfieldMat.opacity, defaultStarOpacity, 0.1);
       streaksMat.opacity = THREE.MathUtils.lerp(streaksMat.opacity, 0, 0.1);
       if (streaksMat.opacity < 0.01) {
@@ -2793,7 +2598,6 @@ function animate() {
     camera.fov = baseFov;
     camera.updateProjectionMatrix();
 
-    // Camera Shake Effect
     if (shakeTime > 0) {
       const shakeVector = new THREE.Vector3((Math.random() - 0.5) * shakeIntensity, (Math.random() - 0.5) * shakeIntensity, 0).applyQuaternion(camera.quaternion);
       camera.position.add(shakeVector);
@@ -2802,7 +2606,6 @@ function animate() {
       shakeIntensity = 0;
     }
 
-    // Update other scene elements
     trackGroup.children.forEach((c: any) => {
       if (c.material?.emissive) c.material.emissiveIntensity = 0.6 + bass * 1.2;
     });
@@ -2816,7 +2619,6 @@ function animate() {
     hyperspaceStreaks.position.z = camera.position.z;
     meteorShower.position.z = camera.position.z - 500;
 
-    // Intense red zone visual effects
     const redZoneEnergy = Math.max(0, (currentEnergy - 0.75) / 0.25);
     meteorShower.visible = redZoneEnergy > 0;
     if (meteorShower.visible) {
@@ -2845,7 +2647,6 @@ function animate() {
 
     for (const block of allBlocks) {
       if (block.mesh && block.type === 'color') {
-        // Use the main scene color for blocks for consistency
         // (block.mesh.material as THREE.MeshStandardMaterial).color.copy(currentColor).multiplyScalar(0.8);
         // (block.mesh.material as THREE.MeshStandardMaterial).emissive.copy(currentColor).multiplyScalar(0.3);
         (block.mesh.material as THREE.MeshBasicMaterial).color.copy(currentColor);
@@ -2876,17 +2677,15 @@ function animate() {
         }
       });
     } else if (videoScreensGroup.children.length > 0) {
-      // Плавное исчезновение (уменьшение opacity)
       let allFadedOut = true;
       videoScreensGroup.children.forEach(screen => {
         const material = (screen as THREE.Mesh).material as THREE.MeshStandardMaterial;
         if (material.opacity > 0) {
           allFadedOut = false;
-          material.opacity -= 1.0 * deltaTime; // Скорость исчезновения
+          material.opacity -= 1.0 * deltaTime;
         }
       });
 
-      // Когда все исчезло, скрываем группу и ставим видео на паузу
       if (allFadedOut && videoScreensGroup.visible) {
         videoScreensGroup.visible = false;
         videoElements.forEach(video => video.pause());
@@ -2895,7 +2694,7 @@ function animate() {
   } else {
     if (backgroundSphere) {
       const time = clock.getElapsedTime();
-      (backgroundSphere.material as THREE.MeshStandardMaterial).emissiveIntensity = 0.2 + (Math.sin(time * 0.5) * 0.5 + 0.5) * 0.2; // Gentle pulse
+      (backgroundSphere.material as THREE.MeshStandardMaterial).emissiveIntensity = 0.2 + (Math.sin(time * 0.5) * 0.5 + 0.5) * 0.2;
       backgroundSphere.rotation.y += 0.0005;
     }
   }
@@ -3046,12 +2845,10 @@ function updateVideoScreensPosition() {
   const _playerFrame = { point: new THREE.Vector3(), tangent: new THREE.Vector3(), normal: new THREE.Vector3(), binormal: new THREE.Vector3() };
   const _screenFrameForLoop = { point: new THREE.Vector3(), tangent: new THREE.Vector3(), normal: new THREE.Vector3(), binormal: new THREE.Vector3() };
 
-  // 1. ДЕЛАЕМ ЭКРАНЫ БЛИЖЕ
-  const START_AHEAD_UNITS = 15;   // Первый экран ближе.
-  const SPACING_UNITS = 25;       // Расстояние между экранами.
+  const START_AHEAD_UNITS = 15;
+  const SPACING_UNITS = 25;
   const SIDE_OFFSET_UNITS = 30;
   const VERTICAL_OFFSET_UNITS = 5;
-  // --------------------------------------------------------
 
   getInterpolatedFrame(playerProgress, _playerFrame);
   const playerLookAtTarget = _playerFrame.point;
@@ -3071,29 +2868,23 @@ function updateVideoScreensPosition() {
 
     const screenFrame = getInterpolatedFrame(screenProgress, _screenFrameForLoop);
 
-    // Расчет позиции (остается без изменений, он верный)
     _screenPos.copy(screenFrame.point)
       .add(screenFrame.binormal.clone().multiplyScalar(sideMultiplier * SIDE_OFFSET_UNITS))
       .add(screenFrame.normal.clone().multiplyScalar(VERTICAL_OFFSET_UNITS));
     screen.position.copy(_screenPos);
 
-    // --- ШАГ 2: ПРАВИЛЬНЫЙ ПОВОРОТ НА ~45 ГРАДУСОВ ---
-    // 1. Сначала задаем базовую ориентацию: экран параллелен трассе и "смотрит" в центр.
     const tangent = screenFrame.tangent;
     const normal = screenFrame.normal;
-    const binormal = screenFrame.binormal.clone().multiplyScalar(-sideMultiplier); // Вектор, куда "смотрит" экран
+    const binormal = screenFrame.binormal.clone().multiplyScalar(-sideMultiplier);
 
     _lookAtMatrix.makeBasis(tangent, normal, binormal);
     _parallelQuat.setFromRotationMatrix(_lookAtMatrix);
 
-    // 2. Затем задаем целевую ориентацию: экран "смотрит" прямо на игрока.
     _lookAtMatrix.lookAt(screen.position, playerLookAtTarget, normal);
     _lookAtQuat.setFromRotationMatrix(_lookAtMatrix);
 
-    // 3. Смешиваем две ориентации. Фактор 0.7 дает поворот примерно на 45 градусов.
     _parallelQuat.slerp(_lookAtQuat, 0.7);
 
-    // Применяем финальный, смешанный поворот
     screen.quaternion.copy(_parallelQuat);
   });
 }
@@ -3102,8 +2893,6 @@ function updateVideoScreensPosition() {
  * ЗАРАНЕЕ загружает все видео-чанки в фоне, не создавая 3D-объектов.
  * Вызывается сразу после выбора файла.
  */
-// --- ЗАМЕНИТЕ ЭТУ ФУНКЦИЮ ---
-
 async function preloadVideoScreens() {
   if (!videoUrl.trim()) return;
   console.log("Начинаю предзагрузку видео-чанков...");
@@ -3132,7 +2921,7 @@ async function preloadVideoScreens() {
     }, { once: true });
 
     video.addEventListener('error', () => {
-      (video as any).isReady = false; // Помечаем как не готовый
+      (video as any).isReady = false;
     }, { once: true });
   }
 }

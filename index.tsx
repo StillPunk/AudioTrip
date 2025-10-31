@@ -178,13 +178,13 @@ const tutorialScreen = document.getElementById('tutorial-screen')!;
 const tutorialContinueButton = document.getElementById('tutorial-continue-button')!;
 
 const STYLE_RANKS = [
-  { name: 'Dismal', rank: 'D', hitsNeeded: 5, multiplier: 2, image: 'assets/images/rank_d.png' },
-  { name: 'Crazy', rank: 'C', hitsNeeded: 10, multiplier: 3, image: 'assets/images/rank_c.png' },
-  { name: 'Badass', rank: 'B', hitsNeeded: 15, multiplier: 4, image: 'assets/images/rank_b.png' },
-  { name: 'Apocalyptic', rank: 'A', hitsNeeded: 20, multiplier: 5, image: 'assets/images/rank_a.png' },
-  { name: 'Savage!', rank: 'S', hitsNeeded: 25, multiplier: 6, image: 'assets/images/rank_s.png' },
-  { name: 'Sick Skills!', rank: 'SS', hitsNeeded: 30, multiplier: 7, image: 'assets/images/rank_ss.png' },
-  { name: 'Smokin\' Sexy Style!', rank: 'SSS', hitsNeeded: 35, multiplier: 8, image: 'assets/images/rank_sss.png' }
+  { name: 'Dismal', rank: 'D', hitsNeeded: 5, multiplier: 2, image: '/assets/images/rank_d.png' },
+  { name: 'Crazy', rank: 'C', hitsNeeded: 10, multiplier: 3, image: '/assets/images/rank_c.png' },
+  { name: 'Badass', rank: 'B', hitsNeeded: 15, multiplier: 4, image: '/assets/images/rank_b.png' },
+  { name: 'Apocalyptic', rank: 'A', hitsNeeded: 20, multiplier: 5, image: '/assets/images/rank_a.png' },
+  { name: 'Savage!', rank: 'S', hitsNeeded: 25, multiplier: 6, image: '/assets/images/rank_s.png' },
+  { name: 'Sick Skills!', rank: 'SS', hitsNeeded: 30, multiplier: 7, image: '/assets/images/rank_ss.png' },
+  { name: 'Smokin\' Sexy Style!', rank: 'SSS', hitsNeeded: 35, multiplier: 8, image: '/assets/images/rank_sss.png' }
 ];
 
 // --- 3D Scene Variables ---
@@ -326,7 +326,7 @@ const soundManager = {
     console.log("Loading sounds...");
     for (const key in this.soundsToLoad) {
       const fileName = this.soundsToLoad[key as keyof typeof this.soundsToLoad];
-      this.audioObjects[key] = new Audio(`assets/sounds/${fileName}`);
+      this.audioObjects[key] = new Audio(`/assets/sounds/${fileName}`);
       this.audioObjects[key].volume = 0.7;
     }
     console.log("Sounds loaded.");
@@ -343,7 +343,7 @@ const soundManager = {
 async function forceGpuPrewarm() {
   if (isGpuPrewarmed) return;
 
-  console.log("!!! Forcing GPU to pre-load all assets. This might take a moment...");
+  console.log("!!! Forcing GPU to pre-load all /assets. This might take a moment...");
 
   const prewarmTargets = [cityGroup, solarSystemGroup];
 
@@ -492,7 +492,7 @@ function generateTunnels() {
 async function loadPlayerModel(): Promise<THREE.Group> {
   const loader = new GLTFLoader();
   return new Promise((resolve, reject) => {
-    loader.load('assets/models/hurricane_triplestar__low_poly.glb',
+    loader.load('/assets/models/hurricane_triplestar__low_poly.glb',
       (gltf) => {
         const modelGroup = gltf.scene;
 
@@ -559,7 +559,7 @@ const NUM_CHUNKS_AXIS = 3;
 
 function createCityEnvironment() {
   const textureLoader = new THREE.TextureLoader();
-  const gridTexture = textureLoader.load('assets/images/grid.png');
+  const gridTexture = textureLoader.load('/assets/images/grid.png');
 
   gridTexture.wrapS = THREE.RepeatWrapping;
   gridTexture.wrapT = THREE.RepeatWrapping;
@@ -652,7 +652,7 @@ function setActiveEnvironment(env: EnvironmentState) {
 function createCityBackground() {
   const geometry = new THREE.SphereGeometry(1000, 64, 32);
 
-  const texture = new THREE.TextureLoader().load('assets/images/city.jpg');
+  const texture = new THREE.TextureLoader().load('/assets/images/city.jpg');
 
   const material = new THREE.MeshBasicMaterial({
     map: texture,
@@ -674,7 +674,7 @@ function createSolarSystemEnvironment() {
 
   const skySphereGeo = new THREE.SphereGeometry(2000, 64, 32);
   const skySphereMat = new THREE.MeshBasicMaterial({
-    map: textureLoader.load('assets/images/milky_way.jpg'),
+    map: textureLoader.load('/assets/images/milky_way.jpg'),
     side: THREE.BackSide,
     fog: false
   });
@@ -690,7 +690,7 @@ function createSolarSystemEnvironment() {
   planetData.forEach(data => {
     const planetGeo = new THREE.SphereGeometry(data.size, 32, 32);
     const planetMat = new THREE.MeshStandardMaterial({
-      map: textureLoader.load(`assets/images/${data.texture}`),
+      map: textureLoader.load(`/assets/images/${data.texture}`),
       roughness: 0.9,
       metalness: 0.1
     });
@@ -893,9 +893,9 @@ function updateMenuEqualizer(time: number) {
 
 function playMenuMusic() {
   const musicThemes = [
-    'assets/sounds/menu_theme_1.mp3',
-    'assets/sounds/menu_theme_2.mp3',
-    'assets/sounds/menu_theme_3.mp3'
+    '/assets/sounds/menu_theme_1.mp3',
+    '/assets/sounds/menu_theme_2.mp3',
+    '/assets/sounds/menu_theme_3.mp3'
   ];
 
   const randomIndex = Math.floor(Math.random() * musicThemes.length);
@@ -937,7 +937,7 @@ async function init() {
     scene.add(player);
     player.visible = false;
   } catch (error) {
-    startPrompt.textContent = 'Error loading assets. Please refresh.';
+    startPrompt.textContent = 'Error loading /assets. Please refresh.';
     startPrompt.style.color = '#f55';
     return;
   }
@@ -1020,7 +1020,7 @@ async function init() {
     lightningBolts.push(createLightningBolt());
   }
 
-  ['assets/sounds/thunder1.mp3', 'assets/sounds/thunder2.mp3', 'assets/sounds/thunder3.mp3'].forEach(soundFile => {
+  ['/assets/sounds/thunder1.mp3', '/assets/sounds/thunder2.mp3', '/assets/sounds/thunder3.mp3'].forEach(soundFile => {
     try {
       const audio = new Audio(soundFile);
       audio.volume = 0.2

@@ -36,7 +36,7 @@ body {
 #start-prompt {
   max-width: 300px;
   justify-self: center;
-  font-size: 14px;
+  font-size: 13px;
 }
 
 #vignette {
@@ -322,15 +322,13 @@ input[type="file"] {
 }
 
 .or-separator {
-  margin: 20px 0 0 0;
-  font-size: 1.1em;
+  font-size: 11px;
   color: #888;
   text-shadow: none;
 }
 
 #search-container {
   position: relative;
-  width: 80%;
   max-width: 500px;
   margin: 15px auto 0 auto;
   pointer-events: all;
@@ -338,12 +336,12 @@ input[type="file"] {
 
 #song-search-input {
   width: 100%;
-  padding: 15px;
+  padding: 8px;
   background-color: rgba(0, 0, 0, 0.5);
   border: 2px solid #0ff;
   color: #fff;
   font-family: 'Orbitron', sans-serif;
-  font-size: 16px;
+  font-size: 14px;
   border-radius: 5px;
   box-sizing: border-box;
   text-align: center;
@@ -430,7 +428,7 @@ input[type="file"] {
   position: absolute;
   top: 20px;
   right: 20px;
-  font-size: 16px;
+  font-size: 13px;
   background: rgba(0, 0, 0, 0.5);
   padding: 8px 15px;
   border-radius: 8px;
@@ -451,7 +449,7 @@ input[type="file"] {
 .main-menu-actions .file-label,
 .main-menu-actions button {
   margin-top: 0;
-  padding: 12px 20px;
+  padding: 10px 20px;
   font-size: 15px;
   flex-basis: 180px;
   flex-grow: 1;
@@ -512,8 +510,8 @@ td:nth-child(3) {
 
 #claim-button {
   position: absolute;
-  bottom: 20px;
-  right: 20px;
+  top: 20px;
+  left: 20px;
   padding: 8px 15px;
   font-size: 14px;
   border-color: #f0f;

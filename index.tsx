@@ -204,6 +204,7 @@ const videoElements: HTMLVideoElement[] = [];
 let isARankEffectActive = false;
 const NUM_SCREENS = 4;
 let videoUrl = '';
+let equalizerGroup: THREE.Group;
 
 // --- Game Data & State ---
 let trackCurve: THREE.CatmullRomCurve3;
@@ -829,6 +830,66 @@ function checkSpecialCollisions() {
   }
 }
 
+function createMenuEqualizer() {
+  if (equalizerGroup) {
+    scene.remove(equalizerGroup);
+    equalizerGroup.children.forEach((child: any) => {
+      child.geometry.dispose();
+      if (child.material) child.material.dispose();
+    });
+  }
+
+  equalizerGroup = new THREE.Group();
+
+  const NUM_BARS = 20;
+  const BAR_SPACING_RATIO = 0.3;
+  const EQ_WIDTH_RATIO = 0.9;
+  const Z_DISTANCE = 12;
+
+  const vFOV = THREE.MathUtils.degToRad(camera.fov);
+  const visibleHeight = 2 * Math.tan(vFOV / 2) * Z_DISTANCE;
+  const visibleWidth = visibleHeight * camera.aspect;
+
+  const totalEqWidth = visibleWidth * EQ_WIDTH_RATIO;
+  const barSpacing = (totalEqWidth / (NUM_BARS - 1)) * BAR_SPACING_RATIO;
+  const barWidth = (totalEqWidth - barSpacing * (NUM_BARS - 1)) / NUM_BARS;
+
+  const barMaterial = new THREE.MeshBasicMaterial({
+    color: 0x00bfff,
+    toneMapped: false,
+  });
+
+  for (let i = 0; i < NUM_BARS; i++) {
+    const barGeometry = new THREE.BoxGeometry(barWidth, 1, barWidth);
+    const bar = new THREE.Mesh(barGeometry, barMaterial);
+    bar.layers.set(ENTIRE_SCENE);
+    bar.layers.enable(BLOOM_SCENE);
+    bar.position.x = i * (barWidth + barSpacing) - totalEqWidth / 2;
+    equalizerGroup.add(bar);
+  }
+
+  scene.add(equalizerGroup);
+}
+
+function updateMenuEqualizer(time: number) {
+  if (!equalizerGroup || !equalizerGroup.visible) return;
+
+  const MAX_HEIGHT = 10;
+  const wave1Speed = 2.0, wave1Length = 0.5;
+  const wave2Speed = 3.5, wave2Length = 0.8;
+  const wave3Speed = 1.2, wave3Length = 0.3;
+
+  equalizerGroup.children.forEach((bar, index) => {
+    const sinValue1 = Math.sin(time * wave1Speed + index * wave1Length);
+    const sinValue2 = Math.sin(time * wave2Speed + index * wave2Length);
+    const sinValue3 = Math.cos(time * wave3Speed + index * wave3Length);
+    const mixedWave = Math.abs(sinValue1) * Math.abs(sinValue2) * Math.abs(sinValue3);
+    const height = 0.1 + mixedWave * MAX_HEIGHT;
+    bar.scale.y = height;
+    bar.position.y = height / 2;
+  });
+}
+
 async function init() {
   soundManager.loadSounds();
   startPrompt.textContent = 'Loading spaceship...';
@@ -1030,6 +1091,7 @@ async function init() {
 
   createCityEnvironment();
   createSolarSystemEnvironment();
+  createMenuEqualizer();
 
   startPrompt.textContent = 'Enter a song to start your ride (VPN may be required)';
   fileLabel.classList.remove('hidden');
@@ -1358,6 +1420,10 @@ async function onFileSelect(event: Event) {
   currentTrackName = file.name.replace(/\.[^/.]+$/, "");
   currentVideoId = `local_${file.name}_${file.size}`;
 
+  if (equalizerGroup) {
+    equalizerGroup.visible = false;
+  }
+
   startScreen.classList.add('hidden');
   claimButton.classList.add('hidden');
   loadingScreen.classList.remove('hidden');
@@ -1481,6 +1547,10 @@ async function onSongSelectFromSearch(song: { title: string, videoId: string }) 
   soundManager.playSound('characterselect');
   autocompleteResults.classList.add('hidden');
   searchInput.value = '';
+
+  if (equalizerGroup) {
+    equalizerGroup.visible = false;
+  }
 
   startScreen.classList.add('hidden');
   claimButton.classList.add('hidden');
@@ -2287,6 +2357,7 @@ const clock = new THREE.Clock();
 function animate() {
   animationFrameId = requestAnimationFrame(animate);
   const deltaTime = clock.getDelta();
+  const time = clock.getElapsedTime();
 
   if (gameStarted && !isPaused && trackCurve && songData && trackFrames.length > 0) {
     lastPlayerProgress = playerProgress;
@@ -2692,6 +2763,25 @@ function animate() {
       }
     }
   } else {
+    updateMenuEqualizer(time);
+
+    if (equalizerGroup) {
+      const Z_DISTANCE = 12;
+      const Y_OFFSET_FACTOR = 2.0;
+      const TILT_ANGLE = -Math.PI / 10;
+
+      const vFOV = THREE.MathUtils.degToRad(camera.fov);
+      const targetHeight = 2 * Math.tan(vFOV / 2) * Z_DISTANCE;
+
+      const targetPosition = new THREE.Vector3(0, -targetHeight / Y_OFFSET_FACTOR, -Z_DISTANCE);
+
+      targetPosition.applyMatrix4(camera.matrixWorld);
+
+      equalizerGroup.position.copy(targetPosition);
+      equalizerGroup.quaternion.copy(camera.quaternion);
+      // equalizerGroup.rotateX(TILT_ANGLE);
+    }
+
     if (backgroundSphere) {
       const time = clock.getElapsedTime();
       (backgroundSphere.material as THREE.MeshStandardMaterial).emissiveIntensity = 0.2 + (Math.sin(time * 0.5) * 0.5 + 0.5) * 0.2;
@@ -2934,6 +3024,15 @@ function onWindowResize() {
   if (sketchPass) {
     sketchPass.uniforms.resolution.value.x = window.innerWidth * window.devicePixelRatio;
     sketchPass.uniforms.resolution.value.y = window.innerHeight * window.devicePixelRatio;
+  }
+
+  if (equalizerGroup && !gameStarted) {
+    scene.remove(equalizerGroup);
+    equalizerGroup.children.forEach((child: any) => {
+      child.geometry.dispose();
+      child.material.dispose();
+    });
+    createMenuEqualizer();
   }
 }
 

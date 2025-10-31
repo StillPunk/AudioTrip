@@ -236,6 +236,7 @@ let currentVideoId = '';
 let maxCombo = 0;
 let totalMisses = 0;
 const rankHistory: number[] = [];
+let menuMusic: HTMLAudioElement | null = null;
 
 // --- Color & Effects State ---
 let currentColor = new THREE.Color(0x00bfff);
@@ -890,6 +891,24 @@ function updateMenuEqualizer(time: number) {
   });
 }
 
+function playMenuMusic() {
+  const musicThemes = [
+    'assets/sounds/menu_theme_1.mp3',
+    'assets/sounds/menu_theme_2.mp3',
+    'assets/sounds/menu_theme_3.mp3'
+  ];
+
+  const randomIndex = Math.floor(Math.random() * musicThemes.length);
+  const randomTheme = musicThemes[randomIndex];
+
+  menuMusic = new Audio(randomTheme);
+  menuMusic.volume = 0.3;
+
+  menuMusic.play().catch(error => {
+    console.warn("[Music] Audio autoplay was blocked by the browser. It will start after the first user interaction.", error);
+  });
+}
+
 async function init() {
   soundManager.loadSounds();
   startPrompt.textContent = 'Loading spaceship...';
@@ -1098,6 +1117,7 @@ async function init() {
   fileInput.disabled = false;
 
   loadTotalScore();
+  playMenuMusic();
 
   animate();
 }
@@ -1413,6 +1433,9 @@ function triggerLightning(frame: { point: THREE.Vector3, tangent: THREE.Vector3,
 }
 
 async function onFileSelect(event: Event) {
+  if (menuMusic) {
+    menuMusic.pause();
+  }
   soundManager.playSound('characterselect');
   const file = (event.target as HTMLInputElement).files?.[0];
   if (!file) return;
@@ -1542,6 +1565,9 @@ function onSearchInput() {
 }
 
 async function onSongSelectFromSearch(song: { title: string, videoId: string }) {
+  if (menuMusic) {
+    menuMusic.pause();
+  }
   currentTrackName = song.title;
   currentVideoId = song.videoId;
   soundManager.playSound('characterselect');

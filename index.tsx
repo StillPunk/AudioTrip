@@ -1664,7 +1664,7 @@ async function onSongSelectFromSearch(song: { title: string, videoId: string }) 
 
       const arrayBuffer = await response.arrayBuffer();
 
-      analysisText.textContent = 'Analyzing your ride...';
+      analysisText.textContent = 'Анализ трека...';
       await analyzeAudioAndGenerateTrack(arrayBuffer.slice(0));
 
       // analysisText.classList.add('hidden');

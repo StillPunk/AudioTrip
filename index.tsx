@@ -1606,15 +1606,17 @@ function onSearchInput() {
       const response = await fetch(`http://localhost:3001/autocomplete?q=${encodeURIComponent(query)}`);
       if (!response.ok) return;
 
-      const songs = await response.json();
+      const data = await response.json();
+      const suggestions = data[1];
+
       autocompleteResults.innerHTML = '';
 
-      songs.forEach((song: { title: string, videoId: string }) => {
+      suggestions.forEach((songTitle: string) => {
         const resultItem = document.createElement('div');
         resultItem.className = 'result-item';
-        resultItem.textContent = song.title;
-        resultItem.title = song.title;
-        resultItem.addEventListener('click', () => onSongSelectFromSearch(song));
+        resultItem.textContent = songTitle;
+        resultItem.title = songTitle;
+        resultItem.addEventListener('click', () => onSongSelectFromSearch({ title: songTitle, videoId: '' }));
         autocompleteResults.appendChild(resultItem);
       });
 
@@ -1622,7 +1624,7 @@ function onSearchInput() {
     } catch (error) {
       console.error("Autocomplete error:", error);
     }
-  }, 300);
+  }, 400);
 }
 
 async function onSongSelectFromSearch(song: { title: string, videoId: string }) {
@@ -1631,7 +1633,6 @@ async function onSongSelectFromSearch(song: { title: string, videoId: string }) 
   }
   menuActive = false;
   currentTrackName = song.title;
-  currentVideoId = song.videoId;
   soundManager.playSound('characterselect');
   autocompleteResults.classList.add('hidden');
   searchInput.value = '';
@@ -1646,23 +1647,38 @@ async function onSongSelectFromSearch(song: { title: string, videoId: string }) 
   loadingScreen.classList.remove('hidden');
 
   requestAnimationFrame(async () => {
-    analysisText.textContent = `Downloading: ${song.title}`;
+    analysisText.textContent = `Загрузка: ${song.title}`;
     // analysisText.classList.remove('hidden');
     // loadingText.classList.add('hidden');
+
     try {
-      await forceGpuPrewarm();
-      videoUrl = `https://www.youtube.com/watch?v=${song.videoId}`;
-      console.log(`[Frontend] Устанавливаю URL для видео-экранов: ${videoUrl}`);
-      preloadVideoScreens();
+      console.log(`[Frontend] Ищу видео для: ${song.title}`);
+      const findResponse = await fetch(`http://localhost:3001/search-video?q=${encodeURIComponent(song.title)}`);
 
-      console.log(`[Frontend] Запрашиваю полное аудио для videoId: ${song.videoId}`);
-      const response = await fetch(`http://localhost:3001/get-audio?videoId=${song.videoId}`);
-
-      if (!response.ok) {
-        throw new Error(`Server error while fetching audio: ${response.statusText}`);
+      if (!findResponse.ok) {
+        const errorText = await findResponse.text();
+        throw new Error(`Сервер не смог найти видео: ${errorText}`);
       }
 
-      const arrayBuffer = await response.arrayBuffer();
+      const videoData = await findResponse.json();
+      currentVideoId = videoData.videoId;
+      videoUrl = videoData.videoUrl;
+
+      console.log(`[Frontend] Найдено видео: ${videoUrl}`);
+
+      preloadVideoScreens();
+
+      await forceGpuPrewarm();
+
+      analysisText.textContent = `Загрузка: ${song.title}`;
+      await new Promise(resolve => requestAnimationFrame(resolve));
+
+      const audioResponse = await fetch(`http://localhost:3001/get-audio?videoId=${currentVideoId}`);
+      if (!audioResponse.ok) {
+        throw new Error(`Сервер не смог отдать аудио`);
+      }
+
+      const arrayBuffer = await audioResponse.arrayBuffer();
 
       analysisText.textContent = 'Анализ трека...';
       await analyzeAudioAndGenerateTrack(arrayBuffer.slice(0));
@@ -1676,7 +1692,7 @@ async function onSongSelectFromSearch(song: { title: string, videoId: string }) 
       alert("Произошла ошибка при загрузке песни. Пожалуйста, попробуйте другую или выберите локальный файл.");
       location.reload();
     }
-  })
+  });
 }
 
 function smoothArray(data: number[], windowSize: number): number[] {
@@ -1766,7 +1782,7 @@ async function analyzeAudioAndGenerateTrack(arrayBuffer: ArrayBuffer) {
 function generateTrackFrames(curve: THREE.CatmullRomCurve3, energyMap: number[], segments: number) {
   const frames = [];
   let lastUp = new THREE.Vector3(0, 1, 0);
-  const INTENSE_ROLL_THRESHOLD = 0.82;
+  const INTENSE_ROLL_THRESHOLD = 0.78;
   const HILL_FREQUENCY = 0.4;
   const HILL_AMPLITUDE = 2.5;
 

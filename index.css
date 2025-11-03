@@ -1,3 +1,4 @@
+@import url('https://fonts.googleapis.com/css2?family=Jura:wght@400;700&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap');
 
 body {
@@ -5,7 +6,7 @@ body {
   overflow: hidden;
   background-color: #000;
   color: #fff;
-  font-family: 'Orbitron', sans-serif;
+  font-family: 'Jura', sans-serif;
   text-shadow: 0 0 5px #0ff, 0 0 10px #0ff;
 }
 
@@ -33,6 +34,58 @@ body {
   pointer-events: none;
 }
 
+.silver-trip {
+  background: linear-gradient(180deg, #f0f0f0, #a0a0a0, #f0f0f0);
+
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+
+  text-shadow: 0 0 7px #ffffff, 0 0 15px #d3d3d3;
+}
+
+#entry-box {
+  background: rgba(0, 0, 0, 0.8);
+  padding: 30px;
+  border-radius: 15px;
+  border: 2px solid #ff4500;
+  box-shadow: 0 0 15px #ff4500, inset 0 0 10px #ff4500;
+  pointer-events: all;
+  min-width: 300px;
+  max-width: 500px;
+  margin: 0 30px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 15px;
+  position: absolute;
+  z-index: 102;
+}
+
+#entry-box h1 {
+  color: #ff4500;
+  text-shadow: 0 0 5px #ff4500, 0 0 10px #ff4500;
+}
+
+#entry-box p {
+  font-size: 1em;
+  text-shadow: none;
+  line-height: 1.5;
+}
+
+#entry-button {
+  border-color: #ff4500;
+  color: #ff4500;
+  text-shadow: 0 0 5px #ff4500;
+}
+
+#entry-button:hover {
+  background-color: #ff4500;
+  color: #000;
+  box-shadow: 0 0 20px #ff4500;
+  text-shadow: none;
+}
+
 #start-prompt {
   max-width: 300px;
   justify-self: center;
@@ -52,6 +105,12 @@ body {
   transition: opacity 0.5s ease-out;
 }
 
+.initially-hidden {
+  transform: scale(0);
+  opacity: 0;
+  pointer-events: none;
+}
+
 #start-screen, #loading-screen, #end-screen {
   background: rgba(0, 0, 0, 0.7);
   padding: 30px;
@@ -62,10 +121,14 @@ body {
   min-width: 300px;
   max-width: 800px;
   margin: 0 30px;
+  position: absolute;
+  z-index: 100;
 }
 
 h1 {
-  font-size: 28px;
+  font-family: 'Orbitron', sans-serif;
+  font-size: 36px;
+  margin-top: 0;
   color: #0ff;
   margin-bottom: 10px;
   text-shadow: 0 0 5px #0ff, 0 0 10px #0ff, 0 0 20px #0ff;
@@ -99,7 +162,7 @@ input[type="file"] {
   border-radius: 5px;
   transition: background-color 0.3s, color 0.3s, box-shadow 0.3s;
   pointer-events: all;
-  font-family: 'Orbitron', sans-serif;
+  font-family: 'Jura', sans-serif;
   text-shadow: 0 0 5px #0ff;
   width: 90%;
   align-self: center;
@@ -142,11 +205,13 @@ input[type="file"] {
 
 #pause-button {
   margin-top: 0;
-  padding: 0 8px;
-  font-size: 22px;
+  padding: 2px 8px;
+  font-size: 14px;
   transition: background-color 0.3s, color 0.3s, box-shadow 0.3s, border-color 0.3s;
-  width: 38px;
+  background: transparent;
+  width: fit-content;
   align-self: flex-start;
+  display: flex;
 }
 
 #game-hud.style-rank-blue #score-container,
@@ -285,7 +350,15 @@ input[type="file"] {
 }
 
 .hidden {
-  display: none !important;
+  opacity: 0;
+  transform: scale(0.95);
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.25s ease-in, transform 0.25s ease-in, visibility 0s linear 0.25s;
+}
+
+.menu-screen {
+  transition: opacity 0.25s ease-out, transform 0.25s ease-out;
 }
 
 @keyframes hud-pulse {
@@ -340,7 +413,7 @@ input[type="file"] {
   background-color: rgba(0, 0, 0, 0.5);
   border: 2px solid #0ff;
   color: #fff;
-  font-family: 'Orbitron', sans-serif;
+  font-family: 'Jura', sans-serif;
   font-size: 14px;
   border-radius: 5px;
   box-sizing: border-box;
@@ -395,7 +468,7 @@ input[type="file"] {
   position: absolute;
   width: 90%;
   max-width: 800px;
-  background: rgba(0, 0, 0, 0.85);
+  background: rgba(0, 0, 0, 0.9);
   padding: 20px 0;
   border-radius: 15px;
   border: 2px solid #0ff;
@@ -434,6 +507,7 @@ input[type="file"] {
   border-radius: 8px;
   border: 1px solid #0ff;
   text-shadow: 0 0 5px #0ff;
+  z-index: 1;
 }
 
 .main-menu-actions {
@@ -457,7 +531,7 @@ input[type="file"] {
 
 #history-table-container {
   width: 100%;
-  max-height: 60vh;
+  max-height: 70vh;
   overflow-y: auto;
   border: 1px solid #088;
 }

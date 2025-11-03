@@ -38,33 +38,42 @@
     <h1>Как играть</h1>
 <!--    <p>Используйте клавиши ⬅️ и ➡️ на клавиатуре, или...</p>-->
     <p>Нажмите и <strong>УДЕРЖИВАЙТЕ</strong> левую или правую часть экрана, чтобы управлять кораблем.</p>
+    <p>Рекомендуется использовать горизонтальное положение устройства.</p>
     <button id="tutorial-continue-button">Понятно!</button>
   </div>
 
   <div id="claim-screen" class="menu-screen hidden">
-    <h1>Claim Rewards</h1>
-    <p>The ability to claim rewards as cryptocurrency tokens will be available soon!</p>
-    <button id="claim-close-button">Close</button>
+    <h1>Получить награду</h1>
+    <p>Возможность получать награды в виде криптовалютных токенов появится в будущем!</p>
+    <button id="claim-close-button">Закрыть</button>
   </div>
 
-  <div id="start-screen">
-    <div id="total-score-container">
-      Общий счет: <span id="total-score">0</span>
-    </div>
+  <div id="entry-box" class="hidden">
+    <h1>Внимание</h1>
+    <p>Впереди высокоинтенсивные визуальные эффекты и вспышки света. При ощущении дискомфорта или усталости, пожалуйста, прервите сеанс игры.</p>
+    <button id="entry-button">Начать</button>
+  </div>
 
-    <h1>AudioTrip</h1>
+  <div id="total-score-container" class="hidden">
+    Общий счет: <span id="total-score">0</span>
+  </div>
+
+  <button id="claim-button" class="hidden">Claim</button>
+
+  <div id="start-screen" class="initially-hidden">
+    <h1>Audio<span class="silver-trip">Trip</span></h1>
     <p id="start-prompt">
-      Enter a song to start your ride
+      Введите название песни, чтобы начать
       <br>
-      <small>(VPN may be required)</small>
+      <small>(Может потребоваться VPN)</small>
     </p>
 
     <div id="search-container">
-      <input type="text" id="song-search-input" placeholder="Artist - Song Title..." autocomplete="off">
+      <input type="text" id="song-search-input" placeholder="Исполнитель - Название..." autocomplete="off">
       <div id="autocomplete-results" class="hidden"></div>
     </div>
 
-    <p class="or-separator">OR</p>
+    <p class="or-separator">ИЛИ</p>
 
     <div class="main-menu-actions">
       <label for="audio-file-input" class="file-label" id="file-label">Выбрать файл</label>
@@ -75,21 +84,21 @@
   </div>
 
   <div id="loading-screen" class="hidden">
-    <p id="loading-text">Loading...</p>
-    <p id="analysis-text" class="hidden">Analyzing your ride...</p>
+    <p id="loading-text">Загрузка</p>
+    <p id="analysis-text">Анализ трека...</p>
   </div>
 
   <div id="game-hud" class="hidden">
     <div id="score-container">
-      Score: <span id="score">0</span> <span id="score-multiplier"></span>
+      Счет: <span id="score">0</span> <span id="score-multiplier"></span>
     </div>
-    <button id="pause-button">⏸</button>
+    <button id="pause-button">pause</button>
   </div>
 
   <div id="pause-menu" class="hidden">
-    <h1>Paused</h1>
-    <button id="resume-button">Resume</button>
-    <button id="main-menu-button">Main Menu</button>
+    <h1>Пауза</h1>
+    <button id="resume-button">Продолжить</button>
+    <button id="main-menu-button">Главное меню</button>
   </div>
 
   <div id="style-rank-container" class="hidden">
@@ -100,13 +109,14 @@
   </div>
 
   <div id="end-screen" class="hidden">
-    <h1>Ride Complete!</h1>
-    <p>Final Score: <span id="final-score">0</span></p>
-    <button id="restart-button">Play Again</button>
+    <h1>Заезд завершен!</h1>
+    <p>Итоговый счет: <span id="final-score">0</span></p>
+    <button id="restart-button">В меню</button>
   </div>
 </div>
+
 <canvas id="webgl-canvas"></canvas>
-<button id="claim-button">Claim</button>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jsmediatags/3.9.5/jsmediatags.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/gsap@3.13/dist/gsap.min.js"></script>
 <script type="module" src="index.js"></script>

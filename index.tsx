@@ -145,7 +145,7 @@ const startScreen = document.getElementById('start-screen')!;
 const startPrompt = document.getElementById('start-prompt') as HTMLParagraphElement;
 const fileLabel = document.getElementById('file-label') as HTMLLabelElement;
 const loadingScreen = document.getElementById('loading-screen')!;
-const loadingText = document.getElementById('loading-text')!;
+// const loadingText = document.getElementById('loading-text')!;
 const analysisText = document.getElementById('analysis-text')!;
 const scoreEl = document.getElementById('score')!;
 const endScreen = document.getElementById('end-screen')!;
@@ -171,11 +171,14 @@ const leaderboardScreen = document.getElementById('leaderboard-screen')!;
 const leaderboardButton = document.getElementById('leaderboard-button')!;
 const leaderboardCloseButton = document.getElementById('leaderboard-close-button')!;
 const totalScoreEl = document.getElementById('total-score')!;
+const totalScoreContainer = document.getElementById('total-score-container')!;
 const claimButton = document.getElementById('claim-button')!;
 const claimScreen = document.getElementById('claim-screen')!;
 const claimCloseButton = document.getElementById('claim-close-button')!;
 const tutorialScreen = document.getElementById('tutorial-screen')!;
 const tutorialContinueButton = document.getElementById('tutorial-continue-button')!;
+const entryBox = document.getElementById('entry-box')!;
+const entryButton = document.getElementById('entry-button')!;
 
 const STYLE_RANKS = [
   { name: 'Dismal', rank: 'D', hitsNeeded: 5, multiplier: 2, image: '/assets/images/rank_d.png' },
@@ -237,6 +240,7 @@ let maxCombo = 0;
 let totalMisses = 0;
 const rankHistory: number[] = [];
 let menuMusic: HTMLAudioElement | null = null;
+let menuActive = false;
 
 // --- Color & Effects State ---
 let currentColor = new THREE.Color(0x00bfff);
@@ -911,7 +915,7 @@ function playMenuMusic() {
 
 async function init() {
   soundManager.loadSounds();
-  startPrompt.textContent = 'Loading spaceship...';
+  startPrompt.textContent = 'Загрузка корабля...';
   fileLabel.classList.add('hidden');
   fileInput.disabled = true;
 
@@ -937,7 +941,7 @@ async function init() {
     scene.add(player);
     player.visible = false;
   } catch (error) {
-    startPrompt.textContent = 'Error loading /assets. Please refresh.';
+    startPrompt.textContent = 'Ошибка загрузки ассетов. Пожалуйста, обновите страницу.';
     startPrompt.style.color = '#f55';
     return;
   }
@@ -1112,12 +1116,65 @@ async function init() {
   createSolarSystemEnvironment();
   createMenuEqualizer();
 
-  startPrompt.textContent = 'Enter a song to start your ride (VPN may be required)';
+  startPrompt.textContent = 'Введите название песни, чтобы начать (Может потребоваться VPN)';
   fileLabel.classList.remove('hidden');
   fileInput.disabled = false;
 
   loadTotalScore();
-  playMenuMusic();
+
+  if (sessionStorage.getItem('warningSeen') === 'true') {
+    startScreen.classList.remove('hidden');
+    totalScoreContainer.classList.remove('hidden');
+    claimButton.classList.remove('hidden');
+    startScreen.style.pointerEvents = 'all';
+    gsap.set(startScreen, { opacity: 1, scale: 1, y: "0px" });
+
+    menuActive = true;
+    playMenuMusic();
+
+  } else {
+    entryBox.classList.remove('hidden');
+
+    gsap.set(startScreen, { scale: 0.7, opacity: 0, y: "100px" });
+
+    entryButton.addEventListener('click', () => {
+      sessionStorage.setItem('warningSeen', 'true');
+
+      menuActive = true;
+      playMenuMusic();
+
+      gsap.to(entryBox, {
+        duration: 0.5,
+        scale: 0.8,
+        y: "-200px",
+        opacity: 0,
+        ease: "power2.in",
+        onComplete: () => {
+          entryBox.classList.add('hidden');
+          totalScoreContainer.classList.remove('hidden');
+          claimButton.classList.remove('hidden');
+        }
+      });
+
+      startScreen.classList.remove('hidden');
+      startScreen.style.pointerEvents = 'all';
+      gsap.timeline()
+        .to(startScreen, {
+          duration: 0.7,
+          scale: 1.05,
+          opacity: 1,
+          y: "0px",
+          ease: "power3.out",
+          delay: 0.2
+        })
+        .to(startScreen, {
+          duration: 0.4,
+          scale: 1,
+          ease: "back.out(1.7)"
+        });
+
+    }, { once: true });
+  }
 
   animate();
 }
@@ -1436,6 +1493,7 @@ async function onFileSelect(event: Event) {
   if (menuMusic) {
     menuMusic.pause();
   }
+  menuActive = false;
   soundManager.playSound('characterselect');
   const file = (event.target as HTMLInputElement).files?.[0];
   if (!file) return;
@@ -1449,85 +1507,88 @@ async function onFileSelect(event: Event) {
 
   startScreen.classList.add('hidden');
   claimButton.classList.add('hidden');
+  totalScoreContainer.classList.add('hidden');
   loadingScreen.classList.remove('hidden');
-  loadingText.classList.add('hidden');
-  analysisText.classList.remove('hidden');
 
-  await forceGpuPrewarm();
+  requestAnimationFrame(async () => {
+    // loadingText.classList.add('hidden');
+    // analysisText.classList.remove('hidden');
+    await forceGpuPrewarm().then(() => {
+      const cleanSearchQuery = (rawQuery: string): string => {
+        return rawQuery
+          // Удаляем все в скобках () и []
+          .replace(/\[.*?\]/g, '')
+          .replace(/\(.*?\)/g, '')
+          // Удаляем типичные слова-паразиты
+          .replace(/official music video|official video|lyrics|audio|hd|4k/gi, '')
+          // Удаляем сайты
+          .replace(/(www\.|http:\/\/|https:\/\/)[^\s]+/g, '')
+          // Удаляем расширение файла
+          .replace(/\.[^/.]+$/, "")
+          // Удаляем номера треков (01., 02 -)
+          .replace(/^\d+\s*[-.]?\s*/, '')
+          // Заменяем разные тире на стандартный дефис
+          .replace(/[—–_]/g, '-')
+          .trim();
+      };
 
-  const cleanSearchQuery = (rawQuery: string): string => {
-    return rawQuery
-      // Удаляем все в скобках () и []
-      .replace(/\[.*?\]/g, '')
-      .replace(/\(.*?\)/g, '')
-      // Удаляем типичные слова-паразиты
-      .replace(/official music video|official video|lyrics|audio|hd|4k/gi, '')
-      // Удаляем сайты
-      .replace(/(www\.|http:\/\/|https:\/\/)[^\s]+/g, '')
-      // Удаляем расширение файла
-      .replace(/\.[^/.]+$/, "")
-      // Удаляем номера треков (01., 02 -)
-      .replace(/^\d+\s*[-.]?\s*/, '')
-      // Заменяем разные тире на стандартный дефис
-      .replace(/[—–_]/g, '-')
-      .trim();
-  };
+      const searchAndPreload = (query: string) => {
+        if (!query) {
+          console.warn("[ПОИСК] Не удалось сформировать поисковый запрос.");
+          return;
+        }
 
-  const searchAndPreload = (query: string) => {
-    if (!query) {
-      console.warn("[ПОИСК] Не удалось сформировать поисковый запрос.");
-      return;
-    }
+        const cleanedQuery = cleanSearchQuery(query);
 
-    const cleanedQuery = cleanSearchQuery(query);
+        console.log(`[ПОИСК] Отправляю ОЧИЩЕННЫЙ запрос на сервер: "${cleanedQuery}"`);
+        fetch(`http://localhost:3001/search-video?q=${encodeURIComponent(cleanedQuery)}`)
+          .then(response => {
+            if (response.ok) return response.json();
+            throw new Error('Клип не найден сервером.');
+          })
+          .then(result => {
+            console.log("[ПОИСК] Успешно найден URL клипа:", result.videoUrl);
+            videoUrl = result.videoUrl;
+            preloadVideoScreens();
+          })
+          .catch(error => console.warn(error.message));
+      };
 
-    console.log(`[ПОИСК] Отправляю ОЧИЩЕННЫЙ запрос на сервер: "${cleanedQuery}"`);
-    fetch(`http://localhost:3001/search-video?q=${encodeURIComponent(cleanedQuery)}`)
-      .then(response => {
-        if (response.ok) return response.json();
-        throw new Error('Клип не найден сервером.');
-      })
-      .then(result => {
-        console.log("[ПОИСК] Успешно найден URL клипа:", result.videoUrl);
-        videoUrl = result.videoUrl;
-        preloadVideoScreens();
-      })
-      .catch(error => console.warn(error.message));
-  };
+      jsmediatags.read(file, {
+        onSuccess: (tag: any) => {
+          const tags = tag.tags;
+          let rawQuery = '';
 
-  jsmediatags.read(file, {
-    onSuccess: (tag: any) => {
-      const tags = tag.tags;
-      let rawQuery = '';
+          if (tags.artist && tags.title) {
+            rawQuery = `${tags.artist} - ${tags.title}`;
+          } else {
+            rawQuery = file.name;
+          }
+          searchAndPreload(rawQuery);
+        },
+        onError: (error: any) => {
+          console.warn(`[ПОИСК] Ошибка чтения тегов. Использую имя файла.`);
+          searchAndPreload(file.name);
+        }
+      });
 
-      if (tags.artist && tags.title) {
-        rawQuery = `${tags.artist} - ${tags.title}`;
-      } else {
-        rawQuery = file.name;
+      async function analyzeAndPlayAudio(audioFile: File) {
+        try {
+          const arrayBuffer = await audioFile.arrayBuffer();
+          await analyzeAudioAndGenerateTrack(arrayBuffer.slice(0));
+          // analysisText.classList.add('hidden');
+          // loadingText.classList.remove('hidden');
+          setupAndPlayAudio(arrayBuffer);
+        } catch (error) {
+          console.error("Критическая ошибка при обработке файла:", error);
+          alert("Произошла ошибка при обработке аудиофайла. Пожалуйста, попробуйте другой.");
+          location.reload();
+        }
       }
-      searchAndPreload(rawQuery);
-    },
-    onError: (error: any) => {
-      console.warn(`[ПОИСК] Ошибка чтения тегов. Использую имя файла.`);
-      searchAndPreload(file.name);
-    }
-  });
 
-  async function analyzeAndPlayAudio(audioFile: File) {
-    try {
-      const arrayBuffer = await audioFile.arrayBuffer();
-      await analyzeAudioAndGenerateTrack(arrayBuffer.slice(0));
-      analysisText.classList.add('hidden');
-      loadingText.classList.remove('hidden');
-      setupAndPlayAudio(arrayBuffer);
-    } catch (error) {
-      console.error("Критическая ошибка при обработке файла:", error);
-      alert("Sorry, there was an error processing that audio file. Please try a different one.");
-      location.reload();
-    }
-  }
-
-  analyzeAndPlayAudio(file);
+      analyzeAndPlayAudio(file);
+    })
+  })
 }
 
 let searchTimeout: number;
@@ -1568,6 +1629,7 @@ async function onSongSelectFromSearch(song: { title: string, videoId: string }) 
   if (menuMusic) {
     menuMusic.pause();
   }
+  menuActive = false;
   currentTrackName = song.title;
   currentVideoId = song.videoId;
   soundManager.playSound('characterselect');
@@ -1580,38 +1642,41 @@ async function onSongSelectFromSearch(song: { title: string, videoId: string }) 
 
   startScreen.classList.add('hidden');
   claimButton.classList.add('hidden');
+  totalScoreContainer.classList.add('hidden');
   loadingScreen.classList.remove('hidden');
-  analysisText.textContent = `Downloading: ${song.title}`;
-  analysisText.classList.remove('hidden');
-  loadingText.classList.add('hidden');
 
-  try {
-    await forceGpuPrewarm();
-    videoUrl = `https://www.youtube.com/watch?v=${song.videoId}`;
-    console.log(`[Frontend] Устанавливаю URL для видео-экранов: ${videoUrl}`);
-    preloadVideoScreens();
+  requestAnimationFrame(async () => {
+    analysisText.textContent = `Downloading: ${song.title}`;
+    // analysisText.classList.remove('hidden');
+    // loadingText.classList.add('hidden');
+    try {
+      await forceGpuPrewarm();
+      videoUrl = `https://www.youtube.com/watch?v=${song.videoId}`;
+      console.log(`[Frontend] Устанавливаю URL для видео-экранов: ${videoUrl}`);
+      preloadVideoScreens();
 
-    console.log(`[Frontend] Запрашиваю полное аудио для videoId: ${song.videoId}`);
-    const response = await fetch(`http://localhost:3001/get-audio?videoId=${song.videoId}`);
+      console.log(`[Frontend] Запрашиваю полное аудио для videoId: ${song.videoId}`);
+      const response = await fetch(`http://localhost:3001/get-audio?videoId=${song.videoId}`);
 
-    if (!response.ok) {
-      throw new Error(`Server error while fetching audio: ${response.statusText}`);
+      if (!response.ok) {
+        throw new Error(`Server error while fetching audio: ${response.statusText}`);
+      }
+
+      const arrayBuffer = await response.arrayBuffer();
+
+      analysisText.textContent = 'Analyzing your ride...';
+      await analyzeAudioAndGenerateTrack(arrayBuffer.slice(0));
+
+      // analysisText.classList.add('hidden');
+      // loadingText.classList.remove('hidden');
+      setupAndPlayAudio(arrayBuffer);
+
+    } catch (error) {
+      console.error("Критическая ошибка при обработке выбранной песни:", error);
+      alert("Произошла ошибка при загрузке песни. Пожалуйста, попробуйте другую или выберите локальный файл.");
+      location.reload();
     }
-
-    const arrayBuffer = await response.arrayBuffer();
-
-    analysisText.textContent = 'Analyzing your ride...';
-    await analyzeAudioAndGenerateTrack(arrayBuffer.slice(0));
-
-    analysisText.classList.add('hidden');
-    loadingText.classList.remove('hidden');
-    setupAndPlayAudio(arrayBuffer);
-
-  } catch (error) {
-    console.error("Критическая ошибка при обработке выбранной песни:", error);
-    alert("Sorry, there was an error loading that song. Please try a different one or a local file.");
-    location.reload();
-  }
+  })
 }
 
 function smoothArray(data: number[], windowSize: number): number[] {
@@ -1907,7 +1972,10 @@ function updateRailEqualizer(rail: THREE.Mesh, frequencyData: Uint8Array) {
 
 function setupAndPlayAudio(arrayBuffer: ArrayBuffer) {
   if (audioContext) audioContext.close();
+
   audioContext = new AudioContext();
+  audioContext.suspend();
+
   analyser = audioContext.createAnalyser();
   analyser.fftSize = 256;
   frequencyData = new Uint8Array(analyser.frequencyBinCount);
@@ -1916,13 +1984,19 @@ function setupAndPlayAudio(arrayBuffer: ArrayBuffer) {
     source = audioContext.createBufferSource();
     source.buffer = buffer;
     source.connect(analyser);
+
     analyser.connect(audioContext.destination);
+
     await checkAndShowTutorial();
+    await audioContext.resume();
+
     source.start(0);
     source.onended = endGame;
+
     if (fadeOutPlane) {
       (fadeOutPlane.material as THREE.MeshBasicMaterial).opacity = 0;
     }
+
     if (player) player.visible = true;
 
     loadingScreen.classList.add('hidden');
@@ -2789,7 +2863,9 @@ function animate() {
       }
     }
   } else {
-    updateMenuEqualizer(time);
+    if (menuActive) {
+      updateMenuEqualizer(time);
+    }
 
     if (equalizerGroup) {
       const Z_DISTANCE = 12;

@@ -1666,7 +1666,7 @@ async function onSongSelectFromSearch(song: { title: string, videoId: string }) 
 
       console.log(`[Frontend] Найдено видео: ${videoUrl}`);
 
-      preloadVideoScreens();
+      await preloadVideoScreens();
 
       await forceGpuPrewarm();
 
@@ -1782,7 +1782,7 @@ async function analyzeAudioAndGenerateTrack(arrayBuffer: ArrayBuffer) {
 function generateTrackFrames(curve: THREE.CatmullRomCurve3, energyMap: number[], segments: number) {
   const frames = [];
   let lastUp = new THREE.Vector3(0, 1, 0);
-  const INTENSE_ROLL_THRESHOLD = 0.78;
+  const INTENSE_ROLL_THRESHOLD = 0.80;
   const HILL_FREQUENCY = 0.4;
   const HILL_AMPLITUDE = 2.5;
 
@@ -2140,7 +2140,7 @@ function pregenerateBlocks(energyMap: number[]) {
       const openLane = Math.floor(Math.random() * NUM_LANES);
       for (let lane = 0; lane < NUM_LANES; lane++) {
         if (lane !== openLane) {
-          allBlocks.push({ progress, lane, type: 'grey', mesh: null, collected: false });
+          // allBlocks.push({ progress, lane, type: 'grey', mesh: null, collected: false });
         }
       }
       consecutiveObstacles++;
@@ -2267,7 +2267,7 @@ function checkCollisions() {
           currentRankIndex = newRankIndex;
 
           const baseMultiplier = currentRankIndex > -1 ? STYLE_RANKS[currentRankIndex].multiplier : 1;
-          const finalMultiplier = isSketchModeActive ? 10 : baseMultiplier;
+          const finalMultiplier = isSketchModeActive ? 20 : baseMultiplier;
           score += 10 * finalMultiplier;
           triggerPositiveBurst(block.mesh.position, block.mesh.material.color);
 
@@ -2308,27 +2308,28 @@ function checkCollisions() {
 }
 
 function updateStyleUI() {
-  if (currentRankIndex > -1) {
-    rankHistory.push(currentRankIndex);
-  }
-
   if (isSketchModeActive) {
-    scoreMultiplierEl.textContent = '(x10)';
-
-    styleRankContainer.classList.add('hidden');
-
-    if (isARankEffectActive) {
-      isARankEffectActive = false;
-      updateVideoScreensVisibility(false);
-    }
-    if (storm.active) {
-      storm.active = false;
-      if (storm.lightningFlash) storm.lightningFlash.intensity = 0;
+    if (styleRankContainer.classList.contains('hidden')) {
+      styleRankContainer.classList.remove('hidden');
     }
 
-    gameHud.classList.remove('style-rank-blue', 'style-rank-gold');
+    rankImage.src = '/assets/images/antiverse.png';
+    scoreMultiplierEl.textContent = '(x20)';
+
+    [styleRankContainer, gameHud].forEach(el => {
+      el.classList.remove('style-rank-blue', 'style-rank-gold');
+      el.classList.add('style-rank-antiverse');
+    });
 
     return;
+  }
+
+  [styleRankContainer, gameHud].forEach(el => {
+    el.classList.remove('style-rank-antiverse');
+  });
+
+  if (currentRankIndex > -1) {
+    rankHistory.push(currentRankIndex);
   }
 
   const rankChanged = currentRankIndex !== previousRankIndex;

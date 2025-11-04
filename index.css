@@ -614,8 +614,29 @@ td:nth-child(3) {
   height: 100%;
   max-height: 85%;
   padding: 0 0 20px;
+  > h1 {
+    margin-top: 10px;
+  }
 }
 
 #history-close-button {
   margin: 0;
+}
+
+.style-rank-antiverse #progress-bar-container,
+.style-rank-antiverse #score-container {
+  border-color: #D30000;
+  box-shadow: 0 0 15px #D30000, 0 0 5px #ff4d4d inset;
+  animation: hud-pulse 0.6s ease-in-out infinite;
+}
+
+.style-rank-antiverse #score-container,
+.style-rank-antiverse #pause-button,
+.style-rank-antiverse #score-multiplier {
+  color: #ffffff;
+  text-shadow: 0 0 8px #ff0000, 0 0 12px #c00000;
+}
+
+.style-rank-antiverse #progress-bar-fill {
+  background: linear-gradient(90deg, #8B0000, #ff4444, #8B0000);
 }

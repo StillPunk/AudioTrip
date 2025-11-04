@@ -3117,13 +3117,28 @@ async function preloadVideoScreens() {
     (video as any).isReady = false;
 
     video.style.display = 'none';
-    video.src = chunkUrl;
     video.crossOrigin = 'anonymous';
     video.muted = true;
     video.loop = true;
     video.preload = 'auto';
     document.body.appendChild(video);
     videoElements.push(video);
+
+    video.addEventListener('canplay', () => {
+      console.log(`Видео-чанк ${i} готов, начинаю буферизацию...`);
+
+      const playPromise = video.play();
+      if (playPromise !== undefined) {
+        playPromise.then(() => {
+          video.pause();
+          (video as any).isReady = true;
+          console.log(`Видео-чанк ${i} отбуферизирован.`);
+        }).catch(error => {
+          console.error(`Ошибка авто-воспроизведения для буферизации:`, error);
+          (video as any).isReady = true;
+        });
+      }
+    }, { once: true });
 
     video.addEventListener('canplaythrough', () => {
       (video as any).isReady = true;
@@ -3132,6 +3147,8 @@ async function preloadVideoScreens() {
     video.addEventListener('error', () => {
       (video as any).isReady = false;
     }, { once: true });
+
+    video.src = chunkUrl;
   }
 }
 

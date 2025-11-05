@@ -185,9 +185,9 @@ const STYLE_RANKS = [
   { name: 'Crazy', rank: 'C', hitsNeeded: 10, multiplier: 3, image: '/assets/images/rank_c.png' },
   { name: 'Badass', rank: 'B', hitsNeeded: 15, multiplier: 4, image: '/assets/images/rank_b.png' },
   { name: 'Apocalyptic', rank: 'A', hitsNeeded: 20, multiplier: 5, image: '/assets/images/rank_a.png' },
-  { name: 'Savage!', rank: 'S', hitsNeeded: 25, multiplier: 6, image: '/assets/images/rank_s.png' },
-  { name: 'Sick Skills!', rank: 'SS', hitsNeeded: 30, multiplier: 7, image: '/assets/images/rank_ss.png' },
-  { name: 'Smokin\' Sexy Style!', rank: 'SSS', hitsNeeded: 35, multiplier: 8, image: '/assets/images/rank_sss.png' }
+  { name: 'Savage!', rank: 'S', hitsNeeded: 30, multiplier: 6, image: '/assets/images/rank_s.png' },
+  { name: 'Sick Skills!', rank: 'SS', hitsNeeded: 40, multiplier: 7, image: '/assets/images/rank_ss.png' },
+  { name: 'Smokin\' Sexy Style!', rank: 'SSS', hitsNeeded: 50, multiplier: 8, image: '/assets/images/rank_sss.png' }
 ];
 
 // --- 3D Scene Variables ---
@@ -1027,7 +1027,7 @@ async function init() {
   ['/assets/sounds/thunder1.mp3', '/assets/sounds/thunder2.mp3', '/assets/sounds/thunder3.mp3'].forEach(soundFile => {
     try {
       const audio = new Audio(soundFile);
-      audio.volume = 0.2
+      audio.volume = 0.1
       storm.thunderSounds.push(audio);
     } catch (e) {
       console.warn(`Could not load thunder sound: ${soundFile}`);
@@ -2140,7 +2140,7 @@ function pregenerateBlocks(energyMap: number[]) {
       const openLane = Math.floor(Math.random() * NUM_LANES);
       for (let lane = 0; lane < NUM_LANES; lane++) {
         if (lane !== openLane) {
-          // allBlocks.push({ progress, lane, type: 'grey', mesh: null, collected: false });
+          allBlocks.push({ progress, lane, type: 'grey', mesh: null, collected: false });
         }
       }
       consecutiveObstacles++;
@@ -2279,7 +2279,7 @@ function checkCollisions() {
             totalMisses++;
             soundManager.playSound('collision_stone');
             consecutiveHits = 0;
-            score = Math.max(0, score - 25);
+            score = Math.max(0, score - 100);
 
             // Логика понижения ранга
             if (currentRankIndex >= 4) { // Если ранг S, SS или SSS

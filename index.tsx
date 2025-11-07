@@ -1,4 +1,9 @@
 declare const jsmediatags: any;
+declare global {
+  interface Window {
+    Telegram: any;
+  }
+}
 
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
@@ -1176,6 +1181,14 @@ async function init() {
     }, { once: true });
   }
 
+  try {
+    if (window.Telegram && window.Telegram.WebApp) {
+      window.Telegram.WebApp.ready();
+    }
+  } catch (e) {
+    console.error("Telegram WebApp API error:", e);
+  }
+
   animate();
 }
 
@@ -1200,7 +1213,7 @@ function checkAndShowTutorial(): Promise<void> {
 async function loadTotalScore() {
   const telegramUserId = 'user123';
   try {
-    const response = await fetch(`http://localhost:3001/api/history/${telegramUserId}`);
+    const response = await fetch(`https://audiotrip.space/api/history/${telegramUserId}`);
     if (!response.ok) return;
     const data = await response.json();
     totalScoreEl.textContent = data.totalScore.toLocaleString('ru-RU');
@@ -1214,7 +1227,7 @@ async function showHistoryScreen() {
 
   try {
     console.log('[API] Запрашиваю историю игр...');
-    const response = await fetch(`http://localhost:3001/api/history/${telegramUserId}`);
+    const response = await fetch(`https://audiotrip.space/api/history/${telegramUserId}`);
     if (!response.ok) {
       throw new Error('Не удалось загрузить историю.');
     }
@@ -1541,7 +1554,7 @@ async function onFileSelect(event: Event) {
         const cleanedQuery = cleanSearchQuery(query);
 
         console.log(`[ПОИСК] Отправляю ОЧИЩЕННЫЙ запрос на сервер: "${cleanedQuery}"`);
-        fetch(`http://localhost:3001/search-video?q=${encodeURIComponent(cleanedQuery)}`)
+        fetch(`https://audiotrip.space/search-video?q=${encodeURIComponent(cleanedQuery)}`)
           .then(response => {
             if (response.ok) return response.json();
             throw new Error('Клип не найден сервером.');
@@ -1601,12 +1614,15 @@ function onSearchInput() {
     return;
   }
 
-  searchTimeout = window.setTimeout(async () => {
-    try {
-      const response = await fetch(`http://localhost:3001/autocomplete?q=${encodeURIComponent(query)}`);
-      if (!response.ok) return;
+  searchTimeout = window.setTimeout(() => {
+    const oldScript = document.getElementById('jsonp-script');
+    if (oldScript) {
+      document.body.removeChild(oldScript);
+    }
 
-      const data = await response.json();
+    const callbackName = 'jsonp_callback_' + Date.now();
+
+    (window as any)[callbackName] = (data: any) => {
       const suggestions = data[1];
 
       autocompleteResults.innerHTML = '';
@@ -1621,9 +1637,25 @@ function onSearchInput() {
       });
 
       autocompleteResults.classList.remove('hidden');
-    } catch (error) {
-      console.error("Autocomplete error:", error);
-    }
+
+      document.body.removeChild(script);
+      delete (window as any)[callbackName];
+    };
+
+    const script = document.createElement('script');
+    script.id = 'jsonp-script';
+    script.src = `https://suggestqueries.google.com/complete/search?client=firefox&ds=yt&q=${encodeURIComponent(query)}&callback=${callbackName}`;
+
+    script.onerror = () => {
+      console.error("Ошибка загрузки JSONP скрипта.");
+      delete (window as any)[callbackName];
+      if (document.getElementById('jsonp-script')) {
+        document.body.removeChild(script);
+      }
+    };
+
+    document.body.appendChild(script);
+
   }, 400);
 }
 
@@ -1653,7 +1685,7 @@ async function onSongSelectFromSearch(song: { title: string, videoId: string }) 
 
     try {
       console.log(`[Frontend] Ищу видео для: ${song.title}`);
-      const findResponse = await fetch(`http://localhost:3001/search-video?q=${encodeURIComponent(song.title)}`);
+      const findResponse = await fetch(`https://audiotrip.space/search-video?q=${encodeURIComponent(song.title)}`);
 
       if (!findResponse.ok) {
         const errorText = await findResponse.text();
@@ -1673,7 +1705,7 @@ async function onSongSelectFromSearch(song: { title: string, videoId: string }) 
       analysisText.textContent = `Загрузка: ${song.title}`;
       await new Promise(resolve => requestAnimationFrame(resolve));
 
-      const audioResponse = await fetch(`http://localhost:3001/get-audio?videoId=${currentVideoId}`);
+      const audioResponse = await fetch(`https://audiotrip.space/get-audio?videoId=${currentVideoId}`);
       if (!audioResponse.ok) {
         throw new Error(`Сервер не смог отдать аудио`);
       }
@@ -1987,7 +2019,19 @@ function updateRailEqualizer(rail: THREE.Mesh, frequencyData: Uint8Array) {
 }
 
 function setupAndPlayAudio(arrayBuffer: ArrayBuffer) {
-  if (audioContext) audioContext.close();
+  try {
+    const tg = (window as any).Telegram.WebApp;
+    if (tg) {
+      tg.expand();
+      tg.requestFullscreen();
+    }
+  } catch (e) {
+    console.log("Telegram API not available for fullscreen.");
+  }
+
+  if (audioContext) {
+    audioContext.close();
+  }
 
   audioContext = new AudioContext();
   audioContext.suspend();
@@ -2255,6 +2299,11 @@ function checkCollisions() {
       if (lastPlayerProgress < block.progress && playerProgress >= block.progress) {
         if (block.type === 'color') {
           soundManager.playSound('collision_color');
+
+          try {
+            (window as any).Telegram.WebApp.HapticFeedback.impactOccurred('light');
+          } catch (e) {}
+
           consecutiveHits++;
 
           let newRankIndex = -1;
@@ -2278,6 +2327,11 @@ function checkCollisions() {
             }
             totalMisses++;
             soundManager.playSound('collision_stone');
+
+            try {
+              (window as any).Telegram.WebApp.HapticFeedback.impactOccurred('heavy');
+            } catch (e) {}
+
             consecutiveHits = 0;
             score = Math.max(0, score - 100);
 
@@ -2956,7 +3010,7 @@ async function endGame() {
 
   try {
     console.log('[API] Отправляю результаты игры на сервер:', gameData);
-    const response = await fetch('http://localhost:3001/api/game-end', {
+    const response = await fetch('https://audiotrip.space/api/game-end', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -3111,7 +3165,7 @@ async function preloadVideoScreens() {
 
   for (let i = 0; i < NUM_SCREENS; i++) {
     const startTime = Math.floor(i * segmentDuration);
-    const chunkUrl = `http://localhost:3001/get-video-chunk?url=${encodeURIComponent(videoUrl)}&startTime=${startTime}&duration=${segmentDuration}`;
+    const chunkUrl = `https://audiotrip.space/get-video-chunk?url=${encodeURIComponent(videoUrl)}&startTime=${startTime}&duration=${segmentDuration}`;
 
     const video = document.createElement('video');
     (video as any).isReady = false;

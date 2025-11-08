@@ -214,6 +214,10 @@ input[type="file"] {
   display: flex;
 }
 
+#pause-button:hover {
+  color: #0ff;
+}
+
 #game-hud.style-rank-blue #score-container,
 #game-hud.style-rank-blue #pause-button {
   border-color: #87CEEB;
@@ -289,7 +293,7 @@ input[type="file"] {
 
 #style-rank-container {
   position: absolute;
-  top: 20px;
+  top: 30px;
   right: 20px;
   z-index: 10;
   display: flex;
@@ -499,7 +503,7 @@ input[type="file"] {
 
 #total-score-container {
   position: absolute;
-  top: 20px;
+  top: 120px;
   right: 20px;
   font-size: 13px;
   background: rgba(0, 0, 0, 0.5);
@@ -508,6 +512,10 @@ input[type="file"] {
   border: 1px solid #0ff;
   text-shadow: 0 0 5px #0ff;
   z-index: 1;
+
+  @media (orientation: landscape) {
+    top: 50px;
+  }
 }
 
 .main-menu-actions {
@@ -584,7 +592,7 @@ td:nth-child(3) {
 
 #claim-button {
   position: absolute;
-  top: 20px;
+  top: 120px;
   left: 20px;
   padding: 8px 15px;
   font-size: 14px;
@@ -596,6 +604,9 @@ td:nth-child(3) {
   pointer-events: all;
   transition: all 0.3s;
   width: 100px;
+  @media (orientation: landscape) {
+    top: 50px;
+  }
 }
 
 #claim-button:hover {

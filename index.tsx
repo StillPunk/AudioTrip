@@ -246,6 +246,8 @@ let totalMisses = 0;
 const rankHistory: number[] = [];
 let menuMusic: HTMLAudioElement | null = null;
 let menuActive = false;
+let cityEnvironmentInitialized = false;
+let solarSystemEnvironmentInitialized = false;
 
 // --- Color & Effects State ---
 let currentColor = new THREE.Color(0x00bfff);
@@ -268,6 +270,7 @@ let storm = {
 };
 let lightningBolts: any[] = [];
 const MAX_BOLTS_IN_POOL = 50; // Пул объектов для молний, чтобы не создавать их на лету
+const _lightningPoints: THREE.Vector3[] = [];
 
 const NORMAL_SKY_COLOR = new THREE.Color(0x00aaff);
 let currentSkyColor = NORMAL_SKY_COLOR.clone();
@@ -938,7 +941,7 @@ async function init() {
   camera.lookAt(0, 0, 0);
   renderer = new THREE.WebGLRenderer({canvas, antialias: true});
   renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.setPixelRatio(window.devicePixelRatio);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5))
   renderer.setClearColor(0x000000);
 
   try {
@@ -971,10 +974,10 @@ async function init() {
   scene.add(positiveBurst);
 
   const renderScene = new RenderPass(scene, camera);
-  const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.0, 0.4, 0.85);
+  const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.7, 0.3, 0.9);
   bloomPass.threshold = 0.25;
-  bloomPass.strength = 1.0;
-  bloomPass.radius = 0.5;
+  bloomPass.strength = 0.8;
+  bloomPass.radius = 0.3;
 
   composer = new EffectComposer(renderer);
   composer.addPass(renderScene);
@@ -1032,7 +1035,7 @@ async function init() {
   ['/assets/sounds/thunder1.mp3', '/assets/sounds/thunder2.mp3', '/assets/sounds/thunder3.mp3'].forEach(soundFile => {
     try {
       const audio = new Audio(soundFile);
-      audio.volume = 0.1
+      audio.volume = 0.05
       storm.thunderSounds.push(audio);
     } catch (e) {
       console.warn(`Could not load thunder sound: ${soundFile}`);
@@ -1117,8 +1120,8 @@ async function init() {
   claimButton.addEventListener('click', () => claimScreen.classList.remove('hidden'));
   claimCloseButton.addEventListener('click', () => claimScreen.classList.add('hidden'));
 
-  createCityEnvironment();
-  createSolarSystemEnvironment();
+  // createCityEnvironment();
+  // createSolarSystemEnvironment();
   createMenuEqualizer();
 
   startPrompt.textContent = 'Введите название песни, чтобы начать (Может потребоваться VPN)';
@@ -1184,6 +1187,8 @@ async function init() {
   try {
     if (window.Telegram && window.Telegram.WebApp) {
       window.Telegram.WebApp.ready();
+      window.Telegram.WebApp.expand();
+      await window.Telegram.WebApp.requestFullscreen();
     }
   } catch (e) {
     console.error("Telegram WebApp API error:", e);
@@ -1410,8 +1415,13 @@ function createMeteorShower() {
   return shower;
 }
 
+const MAX_POINTS_PER_BOLT = 20;
+
 function createLightningBolt() {
+  const positions = new Float32Array(MAX_POINTS_PER_BOLT * 3);
   const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
   const material = new THREE.LineBasicMaterial({
     color: 0xaaccee,
     transparent: true,
@@ -1421,6 +1431,7 @@ function createLightningBolt() {
     opacity: 1.0
   });
   const bolt = new THREE.Line(geometry, material);
+  bolt.frustumCulled = false;
   bolt.userData = {
     isActive: false,
     life: 0
@@ -1430,14 +1441,16 @@ function createLightningBolt() {
   return bolt;
 }
 
-function generateLightningGeometry(startPoint: THREE.Vector3, endPoint: THREE.Vector3) {
-  let points = [startPoint.clone()];
+function generateLightningPoints(startPoint: THREE.Vector3, endPoint: THREE.Vector3, outPointsArray: THREE.Vector3[]): number {
+  outPointsArray.length = 0;
+  outPointsArray.push(startPoint.clone());
+
   let currentPoint = startPoint.clone();
   const direction = endPoint.clone().sub(startPoint).normalize();
   const totalDistance = startPoint.distanceTo(endPoint);
   let distanceTraveled = 0;
 
-  while (distanceTraveled < totalDistance) {
+  while (distanceTraveled < totalDistance && outPointsArray.length < MAX_POINTS_PER_BOLT - 1) {
     const segmentLength = 20 + Math.random() * 40;
     currentPoint.add(direction.clone().multiplyScalar(segmentLength));
 
@@ -1446,11 +1459,11 @@ function generateLightningGeometry(startPoint: THREE.Vector3, endPoint: THREE.Ve
       (Math.random() - 0.5) * 50,
       (Math.random() - 0.5) * 50
     );
-    points.push(currentPoint.clone().add(randomOffset));
+    outPointsArray.push(currentPoint.clone().add(randomOffset));
     distanceTraveled += segmentLength;
   }
-  points.push(endPoint.clone());
-  return new THREE.Float32BufferAttribute(new THREE.BufferGeometry().setFromPoints(points).getAttribute('position').array, 3);
+  outPointsArray.push(endPoint.clone());
+  return outPointsArray.length;
 }
 
 function triggerLightning(frame: { point: THREE.Vector3, tangent: THREE.Vector3, normal: THREE.Vector3, binormal: THREE.Vector3 }) {
@@ -1485,8 +1498,20 @@ function triggerLightning(frame: { point: THREE.Vector3, tangent: THREE.Vector3,
           .add(binormal.clone().multiplyScalar((Math.random() - 0.5) * 600));
       }
 
-      bolt.geometry.setAttribute('position', generateLightningGeometry(startPoint, endPoint));
-      bolt.geometry.computeBoundingSphere();
+      const pointsCount = generateLightningPoints(startPoint, endPoint, _lightningPoints);
+      const positionAttribute = bolt.geometry.attributes.position;
+
+      for(let j = 0; j < pointsCount; j++) {
+        positionAttribute.setXYZ(j, _lightningPoints[j].x, _lightningPoints[j].y, _lightningPoints[j].z);
+      }
+
+      for(let j = pointsCount; j < MAX_POINTS_PER_BOLT; j++) {
+        positionAttribute.setXYZ(j, _lightningPoints[pointsCount-1].x, _lightningPoints[pointsCount-1].y, _lightningPoints[pointsCount-1].z);
+      }
+
+      positionAttribute.needsUpdate = true;
+      bolt.geometry.setDrawRange(0, pointsCount);
+
       bolt.material.opacity = 1.0;
       bolt.userData.isActive = true;
       bolt.userData.life = 0.8 + Math.random() * 0.4;
@@ -1526,6 +1551,16 @@ async function onFileSelect(event: Event) {
   requestAnimationFrame(async () => {
     // loadingText.classList.add('hidden');
     // analysisText.classList.remove('hidden');
+
+    if (!cityEnvironmentInitialized) {
+      createCityEnvironment();
+      cityEnvironmentInitialized = true;
+    }
+    if (!solarSystemEnvironmentInitialized) {
+      createSolarSystemEnvironment();
+      solarSystemEnvironmentInitialized = true;
+    }
+
     await forceGpuPrewarm().then(() => {
       const cleanSearchQuery = (rawQuery: string): string => {
         return rawQuery
@@ -1697,6 +1732,15 @@ async function onSongSelectFromSearch(song: { title: string, videoId: string }) 
       videoUrl = videoData.videoUrl;
 
       console.log(`[Frontend] Найдено видео: ${videoUrl}`);
+
+      if (!cityEnvironmentInitialized) {
+        createCityEnvironment();
+        cityEnvironmentInitialized = true;
+      }
+      if (!solarSystemEnvironmentInitialized) {
+        createSolarSystemEnvironment();
+        solarSystemEnvironmentInitialized = true;
+      }
 
       await preloadVideoScreens();
 
@@ -2019,16 +2063,6 @@ function updateRailEqualizer(rail: THREE.Mesh, frequencyData: Uint8Array) {
 }
 
 function setupAndPlayAudio(arrayBuffer: ArrayBuffer) {
-  try {
-    const tg = (window as any).Telegram.WebApp;
-    if (tg) {
-      tg.expand();
-      tg.requestFullscreen();
-    }
-  } catch (e) {
-    console.log("Telegram API not available for fullscreen.");
-  }
-
   if (audioContext) {
     audioContext.close();
   }

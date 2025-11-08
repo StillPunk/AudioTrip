@@ -3160,8 +3160,8 @@ async function preloadVideoScreens() {
   if (!videoUrl.trim()) return;
   console.log("Начинаю предзагрузку видео-чанков...");
 
-  const assumedDuration = 240;
-  const segmentDuration = assumedDuration / NUM_SCREENS;
+  // const assumedDuration = 240;
+  const segmentDuration = 30;
 
   for (let i = 0; i < NUM_SCREENS; i++) {
     const startTime = Math.floor(i * segmentDuration);

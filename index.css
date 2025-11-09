@@ -8,6 +8,7 @@ body {
   color: #fff;
   font-family: 'Jura', sans-serif;
   text-shadow: 0 0 5px #0ff, 0 0 10px #0ff;
+  user-select: none;
 }
 
 #webgl-canvas {
@@ -89,7 +90,9 @@ body {
 #start-prompt {
   max-width: 300px;
   justify-self: center;
+  text-align: center;
   font-size: 13px;
+  padding: 0 10%;
 }
 
 #vignette {
@@ -503,7 +506,7 @@ input[type="file"] {
 
 #total-score-container {
   position: absolute;
-  top: 120px;
+  top: 100px;
   right: 20px;
   font-size: 13px;
   background: rgba(0, 0, 0, 0.5);
@@ -592,8 +595,8 @@ td:nth-child(3) {
 
 #claim-button {
   position: absolute;
-  top: 120px;
-  left: 20px;
+  top: 150px;
+  right: 20px;
   padding: 8px 15px;
   font-size: 14px;
   border-color: #f0f;
@@ -605,7 +608,7 @@ td:nth-child(3) {
   transition: all 0.3s;
   width: 100px;
   @media (orientation: landscape) {
-    top: 50px;
+    top: 100px;
   }
 }
 
@@ -627,6 +630,10 @@ td:nth-child(3) {
   padding: 0 0 20px;
   > h1 {
     margin-top: 10px;
+  }
+
+  @media (orientation: portrait) {
+    margin-top: 40px;
   }
 }
 

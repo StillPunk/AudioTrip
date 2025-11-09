@@ -246,6 +246,7 @@ let totalMisses = 0;
 const rankHistory: number[] = [];
 let menuMusic: HTMLAudioElement | null = null;
 let menuActive = false;
+let telegramUserId: string | null = null;
 let cityEnvironmentInitialized = false;
 let solarSystemEnvironmentInitialized = false;
 
@@ -528,6 +529,42 @@ async function loadPlayerModel(): Promise<THREE.Group> {
     );
   });
 }
+
+// async function loadBombModel(): Promise<THREE.Group> {
+//   const loader = new GLTFLoader();
+//   return new Promise((resolve, reject) => {
+//     loader.load('/assets/models/mine.glb',
+//       (gltf) => {
+//         const modelGroup = gltf.scene;
+//
+//         const box = new THREE.Box3().setFromObject(modelGroup);
+//         const size = box.getSize(new THREE.Vector3());
+//         const maxDim = Math.max(size.x, size.y, size.z);
+//         const scale = 3.5 / maxDim;
+//         modelGroup.scale.set(scale, scale, scale);
+//
+//         const newBox = new THREE.Box3().setFromObject(modelGroup);
+//         const center = newBox.getCenter(new THREE.Vector3());
+//         modelGroup.position.sub(center);
+//
+//         modelGroup.traverse((object: any) => {
+//           if (object.isMesh) {
+//             if (object.material && object.material.isMeshStandardMaterial) {
+//               object.material.emissive = new THREE.Color(0x550000);
+//             }
+//           }
+//         });
+//
+//         resolve(modelGroup);
+//       },
+//       undefined,
+//       (error) => {
+//         console.error('Failed to load bomb model.', error);
+//         reject(error);
+//       }
+//     );
+//   });
+// }
 
 function handleTouchStart(event: TouchEvent) {
   event.preventDefault();
@@ -922,6 +959,40 @@ function playMenuMusic() {
 }
 
 async function init() {
+  const urlParams = new URLSearchParams(window.location.search);
+  const debugMode = urlParams.get('debug_admin');
+
+  if (debugMode === 'true') {
+    telegramUserId = 'user123';
+    console.log(`[Debug] User ID установлен принудительно: ${telegramUserId}`);
+
+  } else {
+    try {
+      if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initDataUnsafe?.user?.id) {
+        telegramUserId = window.Telegram.WebApp.initDataUnsafe.user.id.toString();
+        console.log(`[Telegram] User ID получен: ${telegramUserId}`);
+      } else {
+        document.body.innerHTML = `
+          <div id="tg-fallback">
+            <h1>AudioTrip</h1>
+            <p>Эта игра предназначена для запуска только внутри Telegram.</p>
+            <a href="https://t.me/AudioTripBot" class="tg-link">Запустить через Telegram</a>
+          </div>
+          <style>
+            body { background-color: #000; color: #fff; font-family: 'Jura', sans-serif; text-shadow: 0 0 5px #0ff; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+            #tg-fallback { text-align: center; border: 2px solid #0ff; padding: 40px; border-radius: 15px; box-shadow: 0 0 15px #0ff; }
+            #tg-fallback h1 { color: #0ff; font-family: 'Orbitron', sans-serif; }
+            .tg-link { display: inline-block; margin-top: 20px; padding: 15px 30px; border: 2px solid #0ff; color: #0ff; text-decoration: none; border-radius: 5px; transition: all 0.3s; }
+            .tg-link:hover { background-color: #0ff; color: #000; box-shadow: 0 0 20px #0ff; }
+          </style>
+        `;
+        return;
+      }
+    } catch (e) {
+      console.error("Ошибка при проверке Telegram API:", e);
+      return;
+    }
+  }
   soundManager.loadSounds();
   startPrompt.textContent = 'Загрузка корабля...';
   fileLabel.classList.add('hidden');
@@ -1188,7 +1259,9 @@ async function init() {
     if (window.Telegram && window.Telegram.WebApp) {
       window.Telegram.WebApp.ready();
       window.Telegram.WebApp.expand();
-      await window.Telegram.WebApp.requestFullscreen();
+      setTimeout(async () => {
+        await window.Telegram.WebApp.requestFullscreen();
+      }, 1000)
     }
   } catch (e) {
     console.error("Telegram WebApp API error:", e);
@@ -1216,7 +1289,7 @@ function checkAndShowTutorial(): Promise<void> {
 }
 
 async function loadTotalScore() {
-  const telegramUserId = 'user123';
+  if (!telegramUserId) return;
   try {
     const response = await fetch(`https://audiotrip.space/api/history/${telegramUserId}`);
     if (!response.ok) return;
@@ -1228,8 +1301,7 @@ async function loadTotalScore() {
 }
 
 async function showHistoryScreen() {
-  const telegramUserId = 'user123';
-
+  if (!telegramUserId) return;
   try {
     console.log('[API] Запрашиваю историю игр...');
     const response = await fetch(`https://audiotrip.space/api/history/${telegramUserId}`);
@@ -2195,64 +2267,77 @@ function pregenerateBlocks(energyMap: number[]) {
   let lastLane = 1;
   let consecutiveObstacles = 0;
 
-  const BLOCK_SPAWN_TIME_AHEAD = 0.5;
-  let lastBlockProgress = -1;
+  // Базовый шанс появления препятствия (12%)
+  const BASE_OBSTACLE_CHANCE = 0.12;
+  // Насколько сложность растет к концу трека (шанс увеличится на 25%)
+  const PROGRESSIVE_DIFFICULTY_FACTOR = 0.25;
+  // Порог энергии для "усиленных" препятствий
+  const HIGH_ENERGY_THRESHOLD = 0.65;
+  // Шанс, что при высокой энергии появится "стенка" из двух блоков вместо одного
+  const OBSTACLE_RUN_CHANCE_MODIFIER = 0.4; // 60%
 
   for (let i = 0; i < energyMap.length; i++) {
     const energy = energyMap[i];
+    const progress = i / energyMap.length;
 
     const spawnChance = energy * 0.5;
     if (Math.random() > spawnChance) {
       continue;
     }
 
-    const timeAtThisEnergyStep = i * (songData.duration / energyMap.length);
-    const progress = (timeAtThisEnergyStep + BLOCK_SPAWN_TIME_AHEAD) / songData.duration;
+    const currentObstacleChance = BASE_OBSTACLE_CHANCE + progress * PROGRESSIVE_DIFFICULTY_FACTOR;
 
-    if (progress >= 1.0) continue;
-
-    const isObstacleRun = energy > 0.6 && Math.random() < (energy - 0.6) * 0.7 && consecutiveObstacles < 2;
-    const isMultiBlock = energy > 0.4 && Math.random() < (energy - 0.4);
-
-    if (isObstacleRun) {
-      const openLane = Math.floor(Math.random() * NUM_LANES);
-      for (let lane = 0; lane < NUM_LANES; lane++) {
-        if (lane !== openLane) {
-          allBlocks.push({ progress, lane, type: 'grey', mesh: null, collected: false });
-        }
-      }
+    if (Math.random() < currentObstacleChance && consecutiveObstacles < 2) {
       consecutiveObstacles++;
-      lastBlockProgress = progress;
+      const timeAtThisEnergyStep = i * (songData.duration / energyMap.length);
+      const blockProgress = (timeAtThisEnergyStep + 0.5) / songData.duration;
+      if (blockProgress >= 1.0) continue;
 
-    } else if (isMultiBlock) {
-      const numBlocksToSpawn = Math.random() < 0.5 ? 1 : 2;
-
-      const availableLanes = [0, 1, 2];
-
-      for (let i = availableLanes.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [availableLanes[i], availableLanes[j]] = [availableLanes[j], availableLanes[i]];
+      if (energy > HIGH_ENERGY_THRESHOLD && Math.random() < OBSTACLE_RUN_CHANCE_MODIFIER) {
+        const openLane = Math.floor(Math.random() * NUM_LANES);
+        for (let lane = 0; lane < NUM_LANES; lane++) {
+          if (lane !== openLane) {
+            allBlocks.push({ progress: blockProgress, lane, type: 'grey', mesh: null, collected: false });
+          }
+        }
+      } else {
+        const lane = Math.floor(Math.random() * NUM_LANES);
+        allBlocks.push({ progress: blockProgress, lane, type: 'grey', mesh: null, collected: false });
       }
-
-      for (let i = 0; i < numBlocksToSpawn; i++) {
-        const lane = availableLanes[i];
-        allBlocks.push({ progress, lane, type: 'color', mesh: null, collected: false });
-      }
-
-      consecutiveObstacles = 0;
-      lastBlockProgress = progress;
+      lastLane = -1;
 
     } else {
-      let lane;
-      const laneChoice = Math.random();
-      if (laneChoice < 0.6) lane = lastLane;
-      else if (laneChoice < 0.8) lane = (lastLane + 1) % NUM_LANES;
-      else lane = (lastLane + NUM_LANES - 1) % NUM_LANES;
-
-      allBlocks.push({ progress, lane, type: 'color', mesh: null, collected: false });
-      lastLane = lane;
       consecutiveObstacles = 0;
-      lastBlockProgress = progress;
+      const timeAtThisEnergyStep = i * (songData.duration / energyMap.length);
+      const blockProgress = (timeAtThisEnergyStep + 0.5) / songData.duration;
+      if (blockProgress >= 1.0) continue;
+
+      const isMultiBlock = energy > 0.4 && Math.random() < (energy - 0.4);
+
+      if (isMultiBlock) {
+        const numBlocksToSpawn = Math.random() < 0.5 ? 1 : 2;
+        const availableLanes = [0, 1, 2];
+        for (let k = availableLanes.length - 1; k > 0; k--) {
+          const j = Math.floor(Math.random() * (k + 1));
+          [availableLanes[k], availableLanes[j]] = [availableLanes[j], availableLanes[k]];
+        }
+        for (let k = 0; k < numBlocksToSpawn; k++) {
+          allBlocks.push({ progress: blockProgress, lane: availableLanes[k], type: 'color', mesh: null, collected: false });
+        }
+
+      } else {
+        if (lastLane === -1) {
+          lastLane = Math.floor(Math.random() * NUM_LANES);
+        }
+        let lane;
+        const laneChoice = Math.random();
+        if (laneChoice < 0.6) lane = lastLane;
+        else if (laneChoice < 0.8) lane = (lastLane + 1) % NUM_LANES;
+        else lane = (lastLane + NUM_LANES - 1) % NUM_LANES;
+
+        allBlocks.push({ progress: blockProgress, lane, type: 'color', mesh: null, collected: false });
+        lastLane = lane;
+      }
     }
   }
 }
@@ -2334,10 +2419,6 @@ function checkCollisions() {
         if (block.type === 'color') {
           soundManager.playSound('collision_color');
 
-          try {
-            (window as any).Telegram.WebApp.HapticFeedback.impactOccurred('light');
-          } catch (e) {}
-
           consecutiveHits++;
 
           let newRankIndex = -1;
@@ -2355,7 +2436,7 @@ function checkCollisions() {
           triggerPositiveBurst(block.mesh.position, block.mesh.material.color);
 
         } else {
-          if (!isSketchModeActive) {
+          if (!isSketchModeActive && !hyperspaceEffect.active) {
             if (consecutiveHits > maxCombo) {
               maxCombo = consecutiveHits;
             }
@@ -2995,6 +3076,20 @@ function animate() {
       backgroundSphere.rotation.y += 0.0005;
     }
   }
+
+  // const pulseTime = clock.getElapsedTime();
+  // const pulse = (Math.sin(pulseTime * 6) * 0.5) + 0.5;
+  //
+  // for (const block of allBlocks) {
+  //   if (block.type === 'bomb' && block.mesh) {
+  //     block.mesh.traverse((child: any) => {
+  //       if (child.isMesh && child.material && child.material.isMeshStandardMaterial) {
+  //         child.material.emissiveIntensity = 1.0 + pulse * 3.0;
+  //       }
+  //     });
+  //   }
+  // }
+
   renderer.setClearColor(0x000000);
   camera.layers.set(BLOOM_SCENE);
   bloomComposer.render();
@@ -3029,8 +3124,6 @@ async function endGame() {
   }
 
   const performanceRank = calculatePerformanceRank();
-
-  const telegramUserId = 'user123';
 
   const gameData = {
     userId: telegramUserId,

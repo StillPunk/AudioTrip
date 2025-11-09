@@ -300,7 +300,8 @@ bloomLayer.set(BLOOM_SCENE);
 // --- Block Management ---
 const allBlocks: any[] = [];
 const colorBlockPool: any[] = [];
-const greyBlockPool: any[] = [];
+const bombPool: any[] = [];
+let bombModel: THREE.Group;
 
 let isSketchModeActive = false;
 let sketchModeTimer = 0;
@@ -530,41 +531,41 @@ async function loadPlayerModel(): Promise<THREE.Group> {
   });
 }
 
-// async function loadBombModel(): Promise<THREE.Group> {
-//   const loader = new GLTFLoader();
-//   return new Promise((resolve, reject) => {
-//     loader.load('/assets/models/mine.glb',
-//       (gltf) => {
-//         const modelGroup = gltf.scene;
-//
-//         const box = new THREE.Box3().setFromObject(modelGroup);
-//         const size = box.getSize(new THREE.Vector3());
-//         const maxDim = Math.max(size.x, size.y, size.z);
-//         const scale = 3.5 / maxDim;
-//         modelGroup.scale.set(scale, scale, scale);
-//
-//         const newBox = new THREE.Box3().setFromObject(modelGroup);
-//         const center = newBox.getCenter(new THREE.Vector3());
-//         modelGroup.position.sub(center);
-//
-//         modelGroup.traverse((object: any) => {
-//           if (object.isMesh) {
-//             if (object.material && object.material.isMeshStandardMaterial) {
-//               object.material.emissive = new THREE.Color(0x550000);
-//             }
-//           }
-//         });
-//
-//         resolve(modelGroup);
-//       },
-//       undefined,
-//       (error) => {
-//         console.error('Failed to load bomb model.', error);
-//         reject(error);
-//       }
-//     );
-//   });
-// }
+async function loadBombModel(): Promise<THREE.Group> {
+  const loader = new GLTFLoader();
+  return new Promise((resolve, reject) => {
+    loader.load('/assets/models/mine.glb',
+      (gltf) => {
+        const modelGroup = gltf.scene;
+
+        const box = new THREE.Box3().setFromObject(modelGroup);
+        const size = box.getSize(new THREE.Vector3());
+        const maxDim = Math.max(size.x, size.y, size.z);
+        const scale = 2.5 / maxDim;
+        modelGroup.scale.set(scale, scale, scale);
+
+        const newBox = new THREE.Box3().setFromObject(modelGroup);
+        const center = newBox.getCenter(new THREE.Vector3());
+        modelGroup.position.sub(center);
+
+        // modelGroup.traverse((object: any) => {
+        //   if (object.isMesh) {
+        //     if (object.material && object.material.isMeshStandardMaterial) {
+        //       object.material.emissive = new THREE.Color(0x550000);
+        //     }
+        //   }
+        // });
+
+        resolve(modelGroup);
+      },
+      undefined,
+      (error) => {
+        console.error('Failed to load bomb model.', error);
+        reject(error);
+      }
+    );
+  });
+}
 
 function handleTouchStart(event: TouchEvent) {
   event.preventDefault();
@@ -968,7 +969,11 @@ async function init() {
 
   } else {
     try {
-      if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initDataUnsafe?.user?.id) {
+      const tg = window.Telegram?.WebApp;
+      const platform = tg?.platform;
+      const userId = tg?.initDataUnsafe?.user?.id;
+
+      if (userId && platform !== 'web' && platform !== 'weba') {
         telegramUserId = window.Telegram.WebApp.initDataUnsafe.user.id.toString();
         console.log(`[Telegram] User ID получен: ${telegramUserId}`);
       } else {
@@ -1016,7 +1021,10 @@ async function init() {
   renderer.setClearColor(0x000000);
 
   try {
-    player = await loadPlayerModel();
+    [player, bombModel] = await Promise.all([
+      loadPlayerModel(),
+      loadBombModel()
+    ]);
     scene.add(player);
     player.visible = false;
   } catch (error) {
@@ -2203,7 +2211,7 @@ function getFromPool(pool: any[], factory: Function) {
 
 function recycleToPool(block: any) {
   if (block.mesh) {
-    const pool = block.type === 'color' ? colorBlockPool : greyBlockPool;
+    const pool = block.type === 'color' ? colorBlockPool : bombPool;
     recycleObject(block.mesh, pool);
     block.mesh = null;
   }
@@ -2228,19 +2236,13 @@ function createColorBlock() {
   return mesh;
 }
 
-function createGreyBlock() {
-  const blockWidth = 1.5;
-  const geometry = new RoundedBoxGeometry(blockWidth, blockWidth * 2, blockWidth * 2, 6, 0.5);
-  const material = new THREE.MeshStandardMaterial({
-    color: 0x959595,
-    // roughness: 0.8,
-    metalness: 0.1,
-    fog: false
-  });
-
-  const mesh = new THREE.Mesh(geometry, material);
-
-  return mesh;
+function createBomb() {
+  if (!bombModel) {
+    console.error("Модель бомбы еще не загружена!");
+    return new THREE.Group();
+  }
+  const bombInstance = bombModel.clone();
+  return bombInstance;
 }
 
 const MIN_BLOCK_SPEED_FACTOR = -0.1;
@@ -2270,9 +2272,9 @@ function pregenerateBlocks(energyMap: number[]) {
   // Базовый шанс появления препятствия (12%)
   const BASE_OBSTACLE_CHANCE = 0.12;
   // Насколько сложность растет к концу трека (шанс увеличится на 25%)
-  const PROGRESSIVE_DIFFICULTY_FACTOR = 0.25;
+  const PROGRESSIVE_DIFFICULTY_FACTOR = 0.2;
   // Порог энергии для "усиленных" препятствий
-  const HIGH_ENERGY_THRESHOLD = 0.65;
+  const HIGH_ENERGY_THRESHOLD = 0.7;
   // Шанс, что при высокой энергии появится "стенка" из двух блоков вместо одного
   const OBSTACLE_RUN_CHANCE_MODIFIER = 0.4; // 60%
 
@@ -2297,12 +2299,12 @@ function pregenerateBlocks(energyMap: number[]) {
         const openLane = Math.floor(Math.random() * NUM_LANES);
         for (let lane = 0; lane < NUM_LANES; lane++) {
           if (lane !== openLane) {
-            allBlocks.push({ progress: blockProgress, lane, type: 'grey', mesh: null, collected: false });
+            allBlocks.push({ progress: blockProgress, lane, type: 'bomb', mesh: null, collected: false });
           }
         }
       } else {
         const lane = Math.floor(Math.random() * NUM_LANES);
-        allBlocks.push({ progress: blockProgress, lane, type: 'grey', mesh: null, collected: false });
+        allBlocks.push({ progress: blockProgress, lane, type: 'bomb', mesh: null, collected: false });
       }
       lastLane = -1;
 
@@ -2390,7 +2392,7 @@ function updateBlocks() {
   for (const block of allBlocks) {
     if (block.collected) continue;
     if (!block.mesh && block.progress > playerProgress && block.progress < activationZone) {
-      block.mesh = getFromPool(block.type === 'color' ? colorBlockPool : greyBlockPool, block.type === 'color' ? createColorBlock : createGreyBlock);
+      block.mesh = getFromPool(block.type === 'color' ? colorBlockPool : bombPool, block.type === 'color' ? createColorBlock : createBomb);
     }
     if (block.mesh && block.progress < deactivationZone) {
       recycleToPool(block);
@@ -2401,7 +2403,7 @@ function updateBlocks() {
     const point = _reusableVector1.copy(frame.point);
 
     const horizontalOffset = _reusableVector2.copy(frame.binormal).multiplyScalar(LANE_POSITIONS[block.lane]);
-    const verticalOffset = _reusableVector3.copy(frame.normal).multiplyScalar(0.8);
+    const verticalOffset = _reusableVector3.copy(frame.normal).multiplyScalar(block.type === 'bomb' ? 0.6 : 0.8);
     point.add(horizontalOffset).add(verticalOffset);
 
     block.mesh.position.copy(point);

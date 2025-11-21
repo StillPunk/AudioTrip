@@ -300,8 +300,7 @@ bloomLayer.set(BLOOM_SCENE);
 // --- Block Management ---
 const allBlocks: any[] = [];
 const colorBlockPool: any[] = [];
-const bombPool: any[] = [];
-let bombModel: THREE.Group;
+const obstaclePool: any[] = [];
 
 let isSketchModeActive = false;
 let sketchModeTimer = 0;
@@ -525,42 +524,6 @@ async function loadPlayerModel(): Promise<THREE.Group> {
       undefined,
       (error) => {
         console.error('Failed to load player model.', error);
-        reject(error);
-      }
-    );
-  });
-}
-
-async function loadBombModel(): Promise<THREE.Group> {
-  const loader = new GLTFLoader();
-  return new Promise((resolve, reject) => {
-    loader.load('/assets/models/mine.glb',
-      (gltf) => {
-        const modelGroup = gltf.scene;
-
-        const box = new THREE.Box3().setFromObject(modelGroup);
-        const size = box.getSize(new THREE.Vector3());
-        const maxDim = Math.max(size.x, size.y, size.z);
-        const scale = 2.5 / maxDim;
-        modelGroup.scale.set(scale, scale, scale);
-
-        const newBox = new THREE.Box3().setFromObject(modelGroup);
-        const center = newBox.getCenter(new THREE.Vector3());
-        modelGroup.position.sub(center);
-
-        // modelGroup.traverse((object: any) => {
-        //   if (object.isMesh) {
-        //     if (object.material && object.material.isMeshStandardMaterial) {
-        //       object.material.emissive = new THREE.Color(0x550000);
-        //     }
-        //   }
-        // });
-
-        resolve(modelGroup);
-      },
-      undefined,
-      (error) => {
-        console.error('Failed to load bomb model.', error);
         reject(error);
       }
     );
@@ -1021,10 +984,7 @@ async function init() {
   renderer.setClearColor(0x000000);
 
   try {
-    [player, bombModel] = await Promise.all([
-      loadPlayerModel(),
-      loadBombModel()
-    ]);
+    player = await loadPlayerModel();
     scene.add(player);
     player.visible = false;
   } catch (error) {
@@ -2211,7 +2171,7 @@ function getFromPool(pool: any[], factory: Function) {
 
 function recycleToPool(block: any) {
   if (block.mesh) {
-    const pool = block.type === 'color' ? colorBlockPool : bombPool;
+    const pool = block.type === 'color' ? colorBlockPool : obstaclePool;
     recycleObject(block.mesh, pool);
     block.mesh = null;
   }
@@ -2236,13 +2196,38 @@ function createColorBlock() {
   return mesh;
 }
 
-function createBomb() {
-  if (!bombModel) {
-    console.error("Модель бомбы еще не загружена!");
-    return new THREE.Group();
-  }
-  const bombInstance = bombModel.clone();
-  return bombInstance;
+function createObstacleBlock() {
+  const group = new THREE.Group();
+
+  const blockWidth = 1.5;
+  const geometry = new RoundedBoxGeometry(
+    blockWidth,
+    blockWidth,
+    blockWidth * 2,
+    6, 0.5
+  );
+
+  const coreMaterial = new THREE.MeshStandardMaterial({
+    color: 0x000000,
+    roughness: 0.2,
+    metalness: 0.1,
+  });
+  const coreMesh = new THREE.Mesh(geometry, coreMaterial);
+  group.add(coreMesh);
+
+  const outlineMaterial = new THREE.MeshBasicMaterial({
+    color: 0xffffff,
+    side: THREE.BackSide,
+    toneMapped: false,
+  });
+  const outlineMesh = new THREE.Mesh(geometry, outlineMaterial);
+
+  outlineMesh.scale.set(1.08, 1.08, 1.08);
+
+  outlineMesh.layers.enable(BLOOM_SCENE);
+  group.add(outlineMesh);
+
+  return group;
 }
 
 const MIN_BLOCK_SPEED_FACTOR = -0.1;
@@ -2299,12 +2284,12 @@ function pregenerateBlocks(energyMap: number[]) {
         const openLane = Math.floor(Math.random() * NUM_LANES);
         for (let lane = 0; lane < NUM_LANES; lane++) {
           if (lane !== openLane) {
-            allBlocks.push({ progress: blockProgress, lane, type: 'bomb', mesh: null, collected: false });
+            allBlocks.push({ progress: blockProgress, lane, type: 'obstacle', mesh: null, collected: false });
           }
         }
       } else {
         const lane = Math.floor(Math.random() * NUM_LANES);
-        allBlocks.push({ progress: blockProgress, lane, type: 'bomb', mesh: null, collected: false });
+        allBlocks.push({ progress: blockProgress, lane, type: 'obstacle', mesh: null, collected: false });
       }
       lastLane = -1;
 
@@ -2389,10 +2374,13 @@ function updateBlocks() {
 
   const rotationMatrix = new THREE.Matrix4();
 
+  const OBSTACLE_HOVER_HEIGHT = 1.0;
+  const COLOR_BLOCK_HOVER_HEIGHT = 0.8;
+
   for (const block of allBlocks) {
     if (block.collected) continue;
     if (!block.mesh && block.progress > playerProgress && block.progress < activationZone) {
-      block.mesh = getFromPool(block.type === 'color' ? colorBlockPool : bombPool, block.type === 'color' ? createColorBlock : createBomb);
+      block.mesh = getFromPool(block.type === 'color' ? colorBlockPool : obstaclePool, block.type === 'color' ? createColorBlock : createObstacleBlock);
     }
     if (block.mesh && block.progress < deactivationZone) {
       recycleToPool(block);
@@ -2403,7 +2391,10 @@ function updateBlocks() {
     const point = _reusableVector1.copy(frame.point);
 
     const horizontalOffset = _reusableVector2.copy(frame.binormal).multiplyScalar(LANE_POSITIONS[block.lane]);
-    const verticalOffset = _reusableVector3.copy(frame.normal).multiplyScalar(block.type === 'bomb' ? 0.6 : 0.8);
+
+    const height = block.type === 'obstacle' ? OBSTACLE_HOVER_HEIGHT : COLOR_BLOCK_HOVER_HEIGHT;
+    const verticalOffset = _reusableVector3.copy(frame.normal).multiplyScalar(height);
+
     point.add(horizontalOffset).add(verticalOffset);
 
     block.mesh.position.copy(point);

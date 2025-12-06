@@ -321,35 +321,100 @@ const framePool: THREE.Mesh[] = [];
 const TUNNEL_SEGMENT_POOL_SIZE = 50;
 const tunnelSegmentPool: THREE.Mesh[] = [];
 let cityFadeIn = { active: false, progress: 0, duration: 1.5 };
+let systemAudioCtx: AudioContext | null = null;
+let gameMusicGain: GainNode | null = null;
+
+const audioBuffers: { [key: string]: AudioBuffer } = {};
+
+let menuMusicSource: AudioBufferSourceNode | null = null;
+let menuMusicGain: GainNode | null = null;
+
+function initSystemAudio() {
+  if (!systemAudioCtx) {
+    // @ts-ignore
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    systemAudioCtx = new AudioContext();
+  }
+  if (systemAudioCtx.state === 'suspended') {
+    systemAudioCtx.resume();
+  }
+
+  try {
+    const buffer = systemAudioCtx.createBuffer(1, 1, 22050);
+    const source = systemAudioCtx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(systemAudioCtx.destination);
+    source.start(0);
+  } catch (e) {
+    console.error("Ошибка прогрева аудио:", e);
+  }
+}
+
+async function loadAudioBuffer(url: string): Promise<AudioBuffer | null> {
+  initSystemAudio();
+  if (!systemAudioCtx) return null;
+
+  try {
+    const response = await fetch(url);
+    const arrayBuffer = await response.arrayBuffer();
+    return await systemAudioCtx.decodeAudioData(arrayBuffer);
+  } catch (error) {
+    console.error(`Ошибка загрузки звука ${url}:`, error);
+    return null;
+  }
+}
 
 const soundManager = {
-  audioObjects: {} as { [key: string]: HTMLAudioElement },
+  loaded: false,
   soundsToLoad: {
-    buttonclick: 'ui_buttonclick.wav',
-    buttonhover: 'ui_buttonhover.wav',
-    characterselect: 'ui_characterselect.wav',
-    collision_color: 'collision_color.wav',
-    collision_stone: 'collision_stone.wav',
-    matchsmall: 'matchsmall.wav',
-    matchlarge: 'matchlarge.wav',
-    matchhuge: 'matchhuge.wav'
+    buttonclick: '/assets/sounds/ui_buttonclick.wav',
+    buttonhover: '/assets/sounds/ui_buttonhover.wav',
+    characterselect: '/assets/sounds/ui_characterselect.wav',
+    collision_color: '/assets/sounds/collision_color.wav',
+    collision_stone: '/assets/sounds/collision_stone.wav',
+    matchsmall: '/assets/sounds/matchsmall.wav',
+    matchlarge: '/assets/sounds/matchlarge.wav',
+    matchhuge: '/assets/sounds/matchhuge.wav',
+    thunder1: '/assets/sounds/thunder1.mp3',
+    thunder2: '/assets/sounds/thunder2.mp3',
+    thunder3: '/assets/sounds/thunder3.mp3'
   },
 
-  loadSounds: function() {
-    console.log("Loading sounds...");
-    for (const key in this.soundsToLoad) {
-      const fileName = this.soundsToLoad[key as keyof typeof this.soundsToLoad];
-      this.audioObjects[key] = new Audio(`/assets/sounds/${fileName}`);
-      this.audioObjects[key].volume = 0.7;
-    }
-    console.log("Sounds loaded.");
+  loadSounds: async function() {
+    if (this.loaded) return;
+    console.log("Loading sounds via Web Audio API...");
+
+    initSystemAudio();
+
+    const promises = Object.entries(this.soundsToLoad).map(async ([key, url]) => {
+      const buffer = await loadAudioBuffer(url as string);
+      if (buffer) {
+        audioBuffers[key] = buffer;
+      }
+    });
+
+    await Promise.all(promises);
+    this.loaded = true;
+    console.log("All sounds loaded.");
   },
 
-  playSound: function(name: string) {
-    if (this.audioObjects[name]) {
-      this.audioObjects[name].currentTime = 0;
-      this.audioObjects[name].play();
+  playSound: function(name: string, volume: number = 0.4) {
+    if (!systemAudioCtx || !audioBuffers[name]) return;
+
+    if (systemAudioCtx.state === 'suspended') {
+      systemAudioCtx.resume();
     }
+
+    const source = systemAudioCtx.createBufferSource();
+    source.buffer = audioBuffers[name];
+
+    const gainNode = systemAudioCtx.createGain();
+    gainNode.gain.value = volume;
+
+    source.connect(gainNode);
+    gainNode.connect(systemAudioCtx.destination);
+
+    source.start(0);
   }
 };
 
@@ -904,7 +969,14 @@ function updateMenuEqualizer(time: number) {
   });
 }
 
-function playMenuMusic() {
+async function playMenuMusic() {
+  if (!systemAudioCtx) return;
+
+  if (menuMusicSource) {
+    try { menuMusicSource.stop(); } catch(e) {}
+    menuMusicSource = null;
+  }
+
   const musicThemes = [
     '/assets/sounds/menu_theme_1.mp3',
     '/assets/sounds/menu_theme_2.mp3',
@@ -912,19 +984,43 @@ function playMenuMusic() {
   ];
 
   const randomIndex = Math.floor(Math.random() * musicThemes.length);
-  const randomTheme = musicThemes[randomIndex];
+  const themeUrl = musicThemes[randomIndex];
 
-  menuMusic = new Audio(randomTheme);
-  menuMusic.volume = 0.3;
+  const buffer = await loadAudioBuffer(themeUrl);
 
-  menuMusic.play().catch(error => {
-    console.warn("[Music] Audio autoplay was blocked by the browser. It will start after the first user interaction.", error);
-  });
+  if (buffer && systemAudioCtx) {
+    menuMusicSource = systemAudioCtx.createBufferSource();
+    menuMusicSource.buffer = buffer;
+    // menuMusicSource.loop = true;
+
+    menuMusicGain = systemAudioCtx.createGain();
+    menuMusicGain.gain.value = 0.3;
+
+    menuMusicGain.gain.setValueAtTime(0, systemAudioCtx.currentTime);
+    menuMusicGain.gain.linearRampToValueAtTime(0.3, systemAudioCtx.currentTime + 2);
+
+    menuMusicSource.connect(menuMusicGain);
+    menuMusicGain.connect(systemAudioCtx.destination);
+
+    menuMusicSource.start(0);
+  }
 }
 
 async function init() {
   const urlParams = new URLSearchParams(window.location.search);
   const debugMode = urlParams.get('debug_admin');
+
+  const unlockAudioHandler = () => {
+    console.log("[Audio] Unlocking iOS Audio...");
+    initSystemAudio();
+    soundManager.loadSounds();
+
+    document.removeEventListener('touchstart', unlockAudioHandler);
+    document.removeEventListener('click', unlockAudioHandler);
+  };
+
+  document.addEventListener('touchstart', unlockAudioHandler, { once: true, passive: false });
+  document.addEventListener('click', unlockAudioHandler, { once: true });
 
   if (debugMode === 'true') {
     telegramUserId = 'user123';
@@ -1184,7 +1280,10 @@ async function init() {
 
     gsap.set(startScreen, { scale: 0.7, opacity: 0, y: "100px" });
 
-    entryButton.addEventListener('click', () => {
+    entryButton.addEventListener('click', async () => {
+      initSystemAudio()
+      await soundManager.loadSounds();
+
       sessionStorage.setItem('warningSeen', 'true');
 
       menuActive = true;
@@ -1560,9 +1659,23 @@ function triggerLightning(frame: { point: THREE.Vector3, tangent: THREE.Vector3,
   }
 
   setTimeout(() => {
-    if (storm.thunderSounds.length > 0 && storm.active) {
-      const sound = storm.thunderSounds[Math.floor(Math.random() * storm.thunderSounds.length)];
-      sound.play();
+    if (storm.active) {
+      const thunderId = Math.floor(Math.random() * 3) + 1;
+      const key = `thunder${thunderId}`;
+
+      if (systemAudioCtx && audioBuffers[key]) {
+        const source = systemAudioCtx.createBufferSource();
+        source.buffer = audioBuffers[key];
+
+        source.playbackRate.value = 0.8 + Math.random() * 0.4;
+
+        const gainNode = systemAudioCtx.createGain();
+        gainNode.gain.value = 0.2;
+
+        source.connect(gainNode);
+        gainNode.connect(systemAudioCtx.destination);
+        source.start(0);
+      }
     }
   }, 100 + Math.random() * 200);
 }
@@ -1571,6 +1684,19 @@ async function onFileSelect(event: Event) {
   if (menuMusic) {
     menuMusic.pause();
   }
+
+  if (menuMusicSource) {
+    if (menuMusicGain && systemAudioCtx) {
+      menuMusicGain.gain.linearRampToValueAtTime(0, systemAudioCtx.currentTime + 0.5);
+    }
+    setTimeout(() => {
+      if(menuMusicSource) {
+        try { menuMusicSource.stop(); } catch(e) {}
+        menuMusicSource = null;
+      }
+    }, 500);
+  }
+
   menuActive = false;
   soundManager.playSound('characterselect');
   const file = (event.target as HTMLInputElement).files?.[0];
@@ -1737,6 +1863,17 @@ function onSearchInput() {
 async function onSongSelectFromSearch(song: { title: string, videoId: string }) {
   if (menuMusic) {
     menuMusic.pause();
+  }
+  if (menuMusicSource) {
+    if (menuMusicGain && systemAudioCtx) {
+      menuMusicGain.gain.linearRampToValueAtTime(0, systemAudioCtx.currentTime + 0.5);
+    }
+    setTimeout(() => {
+      if(menuMusicSource) {
+        try { menuMusicSource.stop(); } catch(e) {}
+        menuMusicSource = null;
+      }
+    }, 500);
   }
   menuActive = false;
   currentTrackName = song.title;
@@ -2117,8 +2254,12 @@ function setupAndPlayAudio(arrayBuffer: ArrayBuffer) {
   audioContext.decodeAudioData(arrayBuffer, async (buffer) => {
     source = audioContext.createBufferSource();
     source.buffer = buffer;
-    source.connect(analyser);
 
+    gameMusicGain = audioContext.createGain();
+    gameMusicGain.gain.value = 1.0;
+
+    source.connect(analyser);
+    analyser.connect(gameMusicGain);
     analyser.connect(audioContext.destination);
 
     await checkAndShowTutorial();
@@ -2255,13 +2396,13 @@ function pregenerateBlocks(energyMap: number[]) {
   let consecutiveObstacles = 0;
 
   // Базовый шанс появления препятствия (12%)
-  const BASE_OBSTACLE_CHANCE = 0.12;
-  // Насколько сложность растет к концу трека (шанс увеличится на 25%)
-  const PROGRESSIVE_DIFFICULTY_FACTOR = 0.2;
+  const BASE_OBSTACLE_CHANCE = 0.08;
+  // Насколько сложность растет к концу трека (шанс увеличится на 15%)
+  const PROGRESSIVE_DIFFICULTY_FACTOR = 0.15;
   // Порог энергии для "усиленных" препятствий
-  const HIGH_ENERGY_THRESHOLD = 0.7;
+  const HIGH_ENERGY_THRESHOLD = 0.75;
   // Шанс, что при высокой энергии появится "стенка" из двух блоков вместо одного
-  const OBSTACLE_RUN_CHANCE_MODIFIER = 0.4; // 60%
+  const OBSTACLE_RUN_CHANCE_MODIFIER = 0.4;
 
   for (let i = 0; i < energyMap.length; i++) {
     const energy = energyMap[i];

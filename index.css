@@ -192,6 +192,8 @@ input[type="file"] {
 }
 
 #score-container {
+  margin-top: 20px;
+  margin-left: 20px;
   font-size: 18px;
   z-index: 10;
   pointer-events: none;
@@ -204,10 +206,15 @@ input[type="file"] {
   flex-direction: column;
   align-items: flex-start;
   transition: border-color 0.3s, box-shadow 0.3s, color 0.3s;
+  @media (orientation: portrait) {
+    margin-top: 85px;
+    margin-left: 0;
+  }
 }
 
 #pause-button {
   margin-top: 0;
+  margin-left: 20px;
   padding: 2px 8px;
   font-size: 14px;
   transition: background-color 0.3s, color 0.3s, box-shadow 0.3s, border-color 0.3s;
@@ -215,6 +222,9 @@ input[type="file"] {
   width: fit-content;
   align-self: flex-start;
   display: flex;
+  @media (orientation: portrait) {
+    margin-left: 0;
+  }
 }
 
 #pause-button:hover {
@@ -297,12 +307,16 @@ input[type="file"] {
 #style-rank-container {
   position: absolute;
   top: 30px;
-  right: 20px;
+  right: 30px;
   z-index: 10;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
   pointer-events: none;
+  @media (orientation: portrait) {
+    top: 85px;
+    right: 20px;
+  }
 }
 
 #rank-image {

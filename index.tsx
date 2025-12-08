@@ -2035,7 +2035,8 @@ async function analyzeAudioAndGenerateTrack(arrayBuffer: ArrayBuffer) {
 function generateTrackFrames(curve: THREE.CatmullRomCurve3, energyMap: number[], segments: number) {
   const frames = [];
   let lastUp = new THREE.Vector3(0, 1, 0);
-  const INTENSE_ROLL_THRESHOLD = 0.80;
+
+  const INTENSE_ROLL_THRESHOLD = 0.85;
   const HILL_FREQUENCY = 0.4;
   const HILL_AMPLITUDE = 2.5;
 
@@ -2050,6 +2051,10 @@ function generateTrackFrames(curve: THREE.CatmullRomCurve3, energyMap: number[],
     const preRollNormal = lastUp.clone();
     preRollNormal.projectOnPlane(tangent).normalize();
 
+    if (isNaN(preRollNormal.x)) {
+      preRollNormal.set(1,0,0);
+    }
+
     const hillOffset = Math.sin(i * HILL_FREQUENCY) * energy * HILL_AMPLITUDE;
     point.add(preRollNormal.clone().multiplyScalar(hillOffset));
 
@@ -2058,11 +2063,22 @@ function generateTrackFrames(curve: THREE.CatmullRomCurve3, energyMap: number[],
     let rollDelta = 0;
     if (energy > INTENSE_ROLL_THRESHOLD) {
       const rollIntensity = (energy - INTENSE_ROLL_THRESHOLD) / (1.0 - INTENSE_ROLL_THRESHOLD);
+      const MAX_ROLL = 1.0;
       rollDelta = turnInfluence * rollIntensity * -1.5;
+
+      if (rollDelta > MAX_ROLL) rollDelta = MAX_ROLL;
+      if (rollDelta < -MAX_ROLL) rollDelta = -MAX_ROLL;
     }
 
     const normal = lastUp.clone();
     normal.projectOnPlane(tangent).normalize();
+
+    if (normal.lengthSq() < 0.001) {
+      normal.copy(lastUp);
+    } else {
+      normal.normalize();
+    }
+
     normal.applyAxisAngle(tangent, rollDelta);
 
     const binormal = new THREE.Vector3().crossVectors(tangent, normal);
@@ -2086,20 +2102,31 @@ function createTrackPath(energyMap: number[], duration: number): THREE.CatmullRo
   const turnInfluence = 4.0;
   const climbInfluence = 3.5;
   const damping = 0.96;
-  const centeringForce = 0.003;
+
+  const baseCenteringForce = 0.003;
 
   const timePerSegment = duration / energyMap.length;
+
+  const MAX_LATERAL_VELOCITY = 7.0;
+  const MAX_SPEED_ENERGY_CAP = 0.75;
 
   for (let i = 0; i < energyMap.length; i++) {
     const energy = energyMap[i];
 
-    const speedMultiplier = 0.5 + energy * 2.5;
+    const speedEnergy = Math.min(energy, MAX_SPEED_ENERGY_CAP);
+    const speedMultiplier = 0.5 + speedEnergy * 2.5;
+
     const segmentLength = baseSegmentLengthPerSecond * timePerSegment * speedMultiplier;
 
-    const effectMultiplier = Math.max(0, (energy - 0.3) / 0.6);
+    const effectMultiplier = Math.min(1.0, Math.max(0, (energy - 0.3) / 0.6));
 
     const turnForce = Math.sin(i * 0.15) * energy * turnInfluence * effectMultiplier * PATH_SCALE;
     const climbForce = (energy - 0.2) * climbInfluence * effectMultiplier * PATH_SCALE;
+
+    let centeringForce = baseCenteringForce;
+    if (Math.abs(pos.x) > 200 || Math.abs(pos.y) > 200) {
+      centeringForce *= 2.5;
+    }
 
     const centerPullX = -pos.x * centeringForce;
     const centerPullY = -pos.y * centeringForce;
@@ -2107,6 +2134,8 @@ function createTrackPath(energyMap: number[], duration: number): THREE.CatmullRo
     vel.x += turnForce + centerPullX;
     vel.y += climbForce + centerPullY;
     vel.multiplyScalar(damping);
+
+    vel.clampLength(0, MAX_LATERAL_VELOCITY);
 
     pos.x += vel.x * PATH_SCALE;
     pos.y += vel.y * PATH_SCALE;
@@ -2395,12 +2424,12 @@ function pregenerateBlocks(energyMap: number[]) {
   let lastLane = 1;
   let consecutiveObstacles = 0;
 
-  // Базовый шанс появления препятствия (12%)
-  const BASE_OBSTACLE_CHANCE = 0.08;
+  // Базовый шанс появления препятствия
+  const BASE_OBSTACLE_CHANCE = 0.1;
   // Насколько сложность растет к концу трека (шанс увеличится на 15%)
   const PROGRESSIVE_DIFFICULTY_FACTOR = 0.15;
   // Порог энергии для "усиленных" препятствий
-  const HIGH_ENERGY_THRESHOLD = 0.75;
+  const HIGH_ENERGY_THRESHOLD = 0.7;
   // Шанс, что при высокой энергии появится "стенка" из двух блоков вместо одного
   const OBSTACLE_RUN_CHANCE_MODIFIER = 0.4;
 

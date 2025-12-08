@@ -421,22 +421,38 @@ const soundManager = {
 async function forceGpuPrewarm() {
   if (isGpuPrewarmed) return;
 
-  console.log("!!! Forcing GPU to pre-load all /assets. This might take a moment...");
+  cityGroup.visible = true;
+  solarSystemGroup.visible = true;
 
-  const prewarmTargets = [cityGroup, solarSystemGroup];
+  videoScreensGroup.visible = true;
 
-  for (const group of prewarmTargets) {
-    group.visible = true;
+  renderer.compile(scene, camera);
 
-    renderer.render(scene, camera);
+  planets.forEach(planet => {
+    const mat = planet.material as THREE.MeshStandardMaterial;
+    if (mat.map) {
+      renderer.initTexture(mat.map);
+    }
+  });
 
-    group.visible = false;
+  if (cityBackgroundSphere) {
+    const mat = cityBackgroundSphere.material as THREE.MeshBasicMaterial;
+    if (mat.map) renderer.initTexture(mat.map);
   }
+
+  const currentTarget = renderer.getRenderTarget();
+  renderer.setRenderTarget(null);
+
+  renderer.render(scene, camera);
+
+  cityGroup.visible = false;
+  solarSystemGroup.visible = false;
+  videoScreensGroup.visible = false;
 
   renderer.info.memory.geometries = 0;
   renderer.info.memory.textures = 0;
 
-  console.log("!!! GPU pre-warm complete. All transitions will be smooth.");
+  console.log("!!! GPU pre-warm complete.");
   isGpuPrewarmed = true;
 }
 
@@ -743,16 +759,25 @@ function createCityBackground() {
   return sphere;
 }
 
-function createSolarSystemEnvironment() {
+function loadTextureAsync(url: string): Promise<THREE.Texture> {
+  return new Promise((resolve) => {
+    new THREE.TextureLoader().load(url, (texture: any) => {
+      resolve(texture);
+    }, undefined, () => {
+      resolve(new THREE.Texture());
+    });
+  });
+}
+
+async function createSolarSystemEnvironment() {
   solarSystemGroup = new THREE.Group();
   solarSystemGroup.visible = false;
   scene.add(solarSystemGroup);
 
-  const textureLoader = new THREE.TextureLoader();
-
+  const skyTexture = await loadTextureAsync('/assets/images/milky_way.jpg');
   const skySphereGeo = new THREE.SphereGeometry(2000, 64, 32);
   const skySphereMat = new THREE.MeshBasicMaterial({
-    map: textureLoader.load('/assets/images/milky_way.jpg'),
+    map: skyTexture,
     side: THREE.BackSide,
     fog: false
   });
@@ -760,15 +785,17 @@ function createSolarSystemEnvironment() {
   solarSystemGroup.add(skySphere);
 
   const planetData = [
-    { texture: 'planet_earth.webp', size: 120, position: new THREE.Vector3(-800, 150, -500) },
-    { texture: 'planet_mars.jpg', size: 80, position: new THREE.Vector3(950, -100, -1200) },
-    { texture: 'planet_gasgiant.jpg', size: 250, position: new THREE.Vector3(-100, 300, -2000) }
+    { url: '/assets/images/planet_earth.webp', size: 120, position: new THREE.Vector3(-800, 150, -500) },
+    { url: '/assets/images/planet_mars.jpg', size: 80, position: new THREE.Vector3(950, -100, -1200) },
+    { url: '/assets/images/planet_gasgiant.jpg', size: 250, position: new THREE.Vector3(-100, 300, -2000) }
   ];
 
-  planetData.forEach(data => {
+  const loadedTextures = await Promise.all(planetData.map(d => loadTextureAsync(d.url)));
+
+  planetData.forEach((data, index) => {
     const planetGeo = new THREE.SphereGeometry(data.size, 32, 32);
     const planetMat = new THREE.MeshStandardMaterial({
-      map: textureLoader.load(`/assets/images/${data.texture}`),
+      map: loadedTextures[index],
       roughness: 0.9,
       metalness: 0.1
     });
@@ -778,8 +805,9 @@ function createSolarSystemEnvironment() {
     solarSystemGroup.add(planet);
     planets.push(planet);
   });
-}
 
+  console.log("Solar system created and textures loaded.");
+}
 
 function updateCityChunks() {
   const _tempVec3 = new THREE.Vector3();
@@ -1723,7 +1751,7 @@ async function onFileSelect(event: Event) {
       cityEnvironmentInitialized = true;
     }
     if (!solarSystemEnvironmentInitialized) {
-      createSolarSystemEnvironment();
+      await createSolarSystemEnvironment();
       solarSystemEnvironmentInitialized = true;
     }
 
@@ -1915,7 +1943,7 @@ async function onSongSelectFromSearch(song: { title: string, videoId: string }) 
         cityEnvironmentInitialized = true;
       }
       if (!solarSystemEnvironmentInitialized) {
-        createSolarSystemEnvironment();
+        await createSolarSystemEnvironment();
         solarSystemEnvironmentInitialized = true;
       }
 
@@ -2108,7 +2136,7 @@ function createTrackPath(energyMap: number[], duration: number): THREE.CatmullRo
   const timePerSegment = duration / energyMap.length;
 
   const MAX_LATERAL_VELOCITY = 7.0;
-  const MAX_SPEED_ENERGY_CAP = 0.75;
+  const MAX_SPEED_ENERGY_CAP = 0.65;
 
   for (let i = 0; i < energyMap.length; i++) {
     const energy = energyMap[i];
@@ -3071,6 +3099,30 @@ function animate() {
       normalStarfieldMat.opacity = defaultStarOpacity * (1.0 - effectProgress);
       streaksMat.opacity = effectProgress;
       hyperspaceStreaks.visible = streaksMat.opacity > 0;
+
+      if (activeTransition.inProgress && t >= 0.5) {
+
+        const nextEnv = (currentEnvironment + 1) % 3;
+
+        if (spaceGroup) spaceGroup.visible = false;
+        if (cityGroup) cityGroup.visible = false;
+        if (solarSystemGroup) solarSystemGroup.visible = false;
+        if (cityBackgroundSphere) cityBackgroundSphere.visible = false;
+
+        setActiveEnvironment(nextEnv);
+        currentEnvironment = nextEnv;
+
+        if (nextEnv === EnvironmentState.SPACE) spaceGroup.visible = true;
+        if (nextEnv === EnvironmentState.CITY) {
+          cityGroup.visible = true;
+          cityBackgroundSphere.visible = true;
+          if (buildingMaterial) buildingMaterial.transparent = false;
+          if (buildingMaterial) buildingMaterial.opacity = 1.0;
+        }
+        if (nextEnv === EnvironmentState.SOLAR_SYSTEM) solarSystemGroup.visible = true;
+
+        activeTransition.inProgress = false;
+      }
 
       const streakPositions = (hyperspaceStreaks.geometry.attributes.position as THREE.BufferAttribute).array as Float32Array;
       const stretchLength = effectProgress * 500;

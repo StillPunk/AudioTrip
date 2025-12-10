@@ -424,8 +424,6 @@ async function forceGpuPrewarm() {
   cityGroup.visible = true;
   solarSystemGroup.visible = true;
 
-  videoScreensGroup.visible = true;
-
   renderer.compile(scene, camera);
 
   planets.forEach(planet => {
@@ -442,12 +440,10 @@ async function forceGpuPrewarm() {
 
   const currentTarget = renderer.getRenderTarget();
   renderer.setRenderTarget(null);
-
   renderer.render(scene, camera);
 
   cityGroup.visible = false;
   solarSystemGroup.visible = false;
-  videoScreensGroup.visible = false;
 
   renderer.info.memory.geometries = 0;
   renderer.info.memory.textures = 0;
@@ -3512,6 +3508,7 @@ async function preloadVideoScreens() {
     const video = document.createElement('video');
     (video as any).isReady = false;
 
+    video.playsInline = true;
     video.style.display = 'none';
     video.crossOrigin = 'anonymous';
     video.muted = true;
@@ -3545,6 +3542,7 @@ async function preloadVideoScreens() {
     }, { once: true });
 
     video.src = chunkUrl;
+    video.load();
   }
 }
 

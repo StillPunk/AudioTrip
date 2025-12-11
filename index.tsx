@@ -228,6 +228,8 @@ let songData: { duration: number, energyMap: number[] } | null = null;
 let gameStarted = false;
 let isPaused = false;
 let consecutiveHits = 0;
+let lastHitTime = 0;
+let lastDecayTime = 0;
 let currentRankIndex = -1;
 let previousRankIndex = -1;
 let targetPlayerLane = 1;
@@ -2324,6 +2326,8 @@ function setupAndPlayAudio(arrayBuffer: ArrayBuffer) {
     rankHistory.length = 0;
     score = 0;
     consecutiveHits = 0;
+    lastHitTime = 0;
+    lastDecayTime = 0;
     currentRankIndex = -1;
     previousRankIndex = -1;
     updateStyleUI();
@@ -2597,15 +2601,9 @@ function checkCollisions() {
           soundManager.playSound('collision_color');
 
           consecutiveHits++;
+          lastHitTime = audioContext.currentTime;
 
-          let newRankIndex = -1;
-          for (let i = STYLE_RANKS.length - 1; i >= 0; i--) {
-            if (consecutiveHits >= STYLE_RANKS[i].hitsNeeded) {
-              newRankIndex = i;
-              break;
-            }
-          }
-          currentRankIndex = newRankIndex;
+          recalculateRank();
 
           const baseMultiplier = currentRankIndex > -1 ? STYLE_RANKS[currentRankIndex].multiplier : 1;
           const finalMultiplier = isSketchModeActive ? 20 : baseMultiplier;
@@ -2651,6 +2649,17 @@ function checkCollisions() {
       }
     }
   }
+}
+
+function recalculateRank() {
+  let newRankIndex = -1;
+  for (let i = STYLE_RANKS.length - 1; i >= 0; i--) {
+    if (consecutiveHits >= STYLE_RANKS[i].hitsNeeded) {
+      newRankIndex = i;
+      break;
+    }
+  }
+  currentRankIndex = newRankIndex;
 }
 
 function updateStyleUI() {
@@ -3215,6 +3224,23 @@ function animate() {
     updateBlocks();
     checkCollisions();
     updateEnvironmentElements();
+
+    if (consecutiveHits > 0 && !isSketchModeActive) {
+      const currentTime = audioContext.currentTime;
+
+      if (currentTime - lastHitTime > 2.0) {
+        if (currentTime - lastDecayTime > 0.3) {
+          consecutiveHits = Math.max(0, consecutiveHits - 0.1);
+
+          recalculateRank();
+          updateStyleUI();
+
+          lastDecayTime = currentTime;
+        }
+      } else {
+        lastDecayTime = currentTime;
+      }
+    }
 
     if (isARankEffectActive) {
       updateVideoScreensPosition();

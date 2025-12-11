@@ -1191,16 +1191,6 @@ async function init() {
     lightningBolts.push(createLightningBolt());
   }
 
-  ['/assets/sounds/thunder1.mp3', '/assets/sounds/thunder2.mp3', '/assets/sounds/thunder3.mp3'].forEach(soundFile => {
-    try {
-      const audio = new Audio(soundFile);
-      audio.volume = 0.05
-      storm.thunderSounds.push(audio);
-    } catch (e) {
-      console.warn(`Could not load thunder sound: ${soundFile}`);
-    }
-  });
-
   videoScreensGroup = new THREE.Group();
   scene.add(videoScreensGroup);
 
@@ -1694,7 +1684,7 @@ function triggerLightning(frame: { point: THREE.Vector3, tangent: THREE.Vector3,
         source.playbackRate.value = 0.8 + Math.random() * 0.4;
 
         const gainNode = systemAudioCtx.createGain();
-        gainNode.gain.value = 0.2;
+        gainNode.gain.value = 0.05;
 
         source.connect(gainNode);
         gainNode.connect(systemAudioCtx.destination);

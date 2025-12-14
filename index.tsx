@@ -14,6 +14,91 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { gsap } from "gsap";
 
+const translations: { [lang: string]: { [key: string]: string } } = {
+  en: {
+    history_title: "Ride History",
+    table_track: "Track",
+    table_score: "Best Score",
+    table_rank: "Rank",
+    btn_close: "Close",
+    leaderboard_title: "Leaderboard",
+    leaderboard_soon: "This section will appear in future updates!",
+    tutorial_title: "How to Play",
+    tutorial_desc_1: "Press and **HOLD** the left or right side of the screen to steer the ship.",
+    tutorial_desc_2: "Landscape mode is recommended.",
+    tutorial_btn_ok: "Got it!",
+    claim_title: "Claim Rewards",
+    claim_desc: "The ability to claim rewards in crypto tokens will appear in the future!",
+    warning_title: "Warning",
+    warning_text: "High-intensity visual effects and flashing lights ahead. If you feel discomfort or fatigue, please stop playing.",
+    btn_start: "Start",
+    total_balance: "Total Balance:",
+    btn_claim: "Claim",
+    start_prompt: "Enter song name to start",
+    start_vpn: "(VPN might be required)",
+    search_placeholder: "Artist - Track Name...",
+    or: "OR",
+    btn_choose_file: "Choose File",
+    btn_history: "History",
+    btn_leaders: "Leaders",
+    loading_wait: "Please wait",
+    loading_analysis: "Analyzing track...",
+    hud_score: "Score:",
+    btn_pause: "pause",
+    pause_title: "Paused",
+    btn_resume: "Resume",
+    btn_menu: "Main Menu",
+    end_title: "Ride Complete!",
+    end_score: "Final Score:",
+    loading_track: "Loading: ",
+    error_load: "Error loading assets. Please refresh.",
+    error_process: "Error processing audio file. Please try another.",
+    error_server: "Server could not find video: ",
+    error_general: "An error occurred. Please try again or use a local file.",
+  },
+  ru: {
+    history_title: "История заездов",
+    table_track: "Трек",
+    table_score: "Лучший счет",
+    table_rank: "Ранг",
+    btn_close: "Закрыть",
+    leaderboard_title: "Таблица лидеров",
+    leaderboard_soon: "Этот раздел появится в будущих обновлениях!",
+    tutorial_title: "Как играть",
+    tutorial_desc_1: "Нажмите и <strong>УДЕРЖИВАЙТЕ</strong> левую или правую часть экрана, чтобы управлять кораблем.",
+    tutorial_desc_2: "Рекомендуется использовать горизонтальное положение устройства.",
+    tutorial_btn_ok: "Понятно!",
+    claim_title: "Получить награду",
+    claim_desc: "Возможность получать награды в виде криптовалютных токенов появится в будущем!",
+    warning_title: "Внимание",
+    warning_text: "Впереди высокоинтенсивные визуальные эффекты и вспышки света. При ощущении дискомфорта, прервите игру.",
+    btn_start: "Начать",
+    total_balance: "Общий баланс:",
+    btn_claim: "Claim",
+    start_prompt: "Введите название песни, чтобы начать",
+    start_vpn: "(Может потребоваться VPN)",
+    search_placeholder: "Исполнитель - Название...",
+    or: "ИЛИ",
+    btn_choose_file: "Выбрать файл",
+    btn_history: "История",
+    btn_leaders: "Лидеры",
+    loading_wait: "Пожалуйста, подождите",
+    loading_analysis: "Анализ трека...",
+    hud_score: "Счет:",
+    btn_pause: "пауза",
+    pause_title: "Пауза",
+    btn_resume: "Продолжить",
+    btn_menu: "Главное меню",
+    end_title: "Заезд завершен!",
+    end_score: "Итоговый счет:",
+    loading_track: "Загрузка: ",
+    error_load: "Ошибка загрузки ассетов. Пожалуйста, обновите страницу.",
+    error_process: "Произошла ошибка при обработке аудиофайла. Попробуйте другой.",
+    error_server: "Сервер не смог найти видео: ",
+    error_general: "Произошла ошибка. Попробуйте еще раз или выберите локальный файл.",
+  }
+};
+
 const SketchShader = {
   uniforms: {
     'tDiffuse': { value: null },
@@ -68,6 +153,8 @@ const SketchShader = {
     }
   `
 };
+
+let currentLang = 'en';
 
 const RailEqualizerMaterial = {
   uniforms: {
@@ -330,6 +417,40 @@ const audioBuffers: { [key: string]: AudioBuffer } = {};
 
 let menuMusicSource: AudioBufferSourceNode | null = null;
 let menuMusicGain: GainNode | null = null;
+
+function t(key: string): string {
+  return translations[currentLang][key] || key;
+}
+
+function initLocalization() {
+  const tgLang = window.Telegram?.WebApp?.initDataUnsafe?.user?.language_code;
+  const browserLang = navigator.language.slice(0, 2);
+
+  if (tgLang === 'ru' || (!tgLang && browserLang === 'ru')) {
+    currentLang = 'ru';
+  } else {
+    currentLang = 'en';
+  }
+
+  console.log(`[i18n] Language set to: ${currentLang}`);
+
+  const elements = document.querySelectorAll('[data-i18n]');
+  elements.forEach(el => {
+    const key = el.getAttribute('data-i18n');
+    if (key && translations[currentLang][key]) {
+      if (translations[currentLang][key].includes('<')) {
+        el.innerHTML = translations[currentLang][key];
+      } else {
+        el.textContent = translations[currentLang][key];
+      }
+    }
+  });
+
+  const searchInput = document.getElementById('song-search-input') as HTMLInputElement;
+  if (searchInput) {
+    searchInput.placeholder = t('search_placeholder');
+  }
+}
 
 function initSystemAudio() {
   if (!systemAudioCtx) {
@@ -1033,6 +1154,7 @@ async function playMenuMusic() {
 }
 
 async function init() {
+  initLocalization();
   const urlParams = new URLSearchParams(window.location.search);
   const debugMode = urlParams.get('debug_admin');
 
@@ -1084,7 +1206,7 @@ async function init() {
     }
   }
   soundManager.loadSounds();
-  startPrompt.textContent = 'Загрузка корабля...';
+  startPrompt.textContent = t('loading_track');
   fileLabel.classList.add('hidden');
   fileInput.disabled = true;
 
@@ -1110,7 +1232,7 @@ async function init() {
     scene.add(player);
     player.visible = false;
   } catch (error) {
-    startPrompt.textContent = 'Ошибка загрузки ассетов. Пожалуйста, обновите страницу.';
+    startPrompt.textContent = t('error_load');
     startPrompt.style.color = '#f55';
     return;
   }
@@ -1275,7 +1397,7 @@ async function init() {
   // createSolarSystemEnvironment();
   createMenuEqualizer();
 
-  startPrompt.textContent = 'Введите название песни, чтобы начать (Может потребоваться VPN)';
+  startPrompt.innerHTML = `${t('start_prompt')}<br><small>${t('start_vpn')}</small>`;
   fileLabel.classList.remove('hidden');
   fileInput.disabled = false;
 
@@ -1811,7 +1933,7 @@ async function onFileSelect(event: Event) {
           setupAndPlayAudio(arrayBuffer);
         } catch (error) {
           console.error("Критическая ошибка при обработке файла:", error);
-          alert("Произошла ошибка при обработке аудиофайла. Пожалуйста, попробуйте другой.");
+          alert(t('error_process'));
           location.reload();
         }
       }
@@ -1907,7 +2029,7 @@ async function onSongSelectFromSearch(song: { title: string, videoId: string }) 
   loadingScreen.classList.remove('hidden');
 
   requestAnimationFrame(async () => {
-    analysisText.textContent = `Загрузка: ${song.title}`;
+    analysisText.textContent = t('loading_track') + song.title;
     // analysisText.classList.remove('hidden');
     // loadingText.classList.add('hidden');
 
@@ -1917,7 +2039,7 @@ async function onSongSelectFromSearch(song: { title: string, videoId: string }) 
 
       if (!findResponse.ok) {
         const errorText = await findResponse.text();
-        throw new Error(`Сервер не смог найти видео: ${errorText}`);
+        throw new Error(t('error_server') + errorText);
       }
 
       const videoData = await findResponse.json();
@@ -1939,7 +2061,7 @@ async function onSongSelectFromSearch(song: { title: string, videoId: string }) 
 
       await forceGpuPrewarm();
 
-      analysisText.textContent = `Загрузка: ${song.title}`;
+      analysisText.textContent = t('loading_track') + song.title;
       await new Promise(resolve => requestAnimationFrame(resolve));
 
       const audioResponse = await fetch(`https://audiotrip.space/get-audio?videoId=${currentVideoId}`);
@@ -1949,7 +2071,7 @@ async function onSongSelectFromSearch(song: { title: string, videoId: string }) 
 
       const arrayBuffer = await audioResponse.arrayBuffer();
 
-      analysisText.textContent = 'Анализ трека...';
+      analysisText.textContent = t('loading_analysis');
       await analyzeAudioAndGenerateTrack(arrayBuffer.slice(0));
 
       // analysisText.classList.add('hidden');
@@ -1958,7 +2080,7 @@ async function onSongSelectFromSearch(song: { title: string, videoId: string }) 
 
     } catch (error) {
       console.error("Критическая ошибка при обработке выбранной песни:", error);
-      alert("Произошла ошибка при загрузке песни. Пожалуйста, попробуйте другую или выберите локальный файл.");
+      alert(t('error_general'));
       location.reload();
     }
   });

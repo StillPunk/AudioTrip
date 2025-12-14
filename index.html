@@ -5,104 +5,115 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>AudioTrip</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <meta name="description" content="AudioTrip - музыкальная ритм-игра, где ты управляешь кораблем на треке, сгенерированном по твоей любимой музыке.">
+  <meta name="description" content="AudioTrip - Rhythm game on TON blockchain">
   <link rel="stylesheet" href="index.css"/>
 </head>
 
 <body>
 <div id="vignette"></div>
 <div id="ui-container">
+
+  <!-- History Screen -->
   <div id="history-screen" class="menu-screen hidden">
-    <h1>История заездов</h1>
+    <h1 data-i18n="history_title">История заездов</h1>
     <div id="history-table-container">
       <table>
         <thead>
         <tr>
-          <th>Трек</th>
-          <th>Лучший счет</th>
-          <th>Ранг</th>
+          <th data-i18n="table_track">Трек</th>
+          <th data-i18n="table_score">Лучший счет</th>
+          <th data-i18n="table_rank">Ранг</th>
         </tr>
         </thead>
         <tbody id="history-table-body">
         </tbody>
       </table>
     </div>
-    <button id="history-close-button">Закрыть</button>
+    <button id="history-close-button" data-i18n="btn_close">Закрыть</button>
   </div>
 
+  <!-- Leaderboard Screen -->
   <div id="leaderboard-screen" class="menu-screen hidden">
-    <h1>Таблица лидеров</h1>
-    <p>Этот раздел появится в будущих обновлениях!</p>
-    <button id="leaderboard-close-button">Закрыть</button>
+    <h1 data-i18n="leaderboard_title">Таблица лидеров</h1>
+    <p data-i18n="leaderboard_soon">Этот раздел появится в будущих обновлениях!</p>
+    <button id="leaderboard-close-button" data-i18n="btn_close">Закрыть</button>
   </div>
 
+  <!-- Tutorial Screen -->
   <div id="tutorial-screen" class="menu-screen hidden">
-    <h1>Как играть</h1>
-<!--    <p>Используйте клавиши ⬅️ и ➡️ на клавиатуре, или...</p>-->
-    <p>Нажмите и <strong>УДЕРЖИВАЙТЕ</strong> левую или правую часть экрана, чтобы управлять кораблем.</p>
-    <p>Рекомендуется использовать горизонтальное положение устройства.</p>
-    <button id="tutorial-continue-button">Понятно!</button>
+    <h1 data-i18n="tutorial_title">Как играть</h1>
+    <p data-i18n="tutorial_desc_1">Нажмите и <strong>УДЕРЖИВАЙТЕ</strong> левую или правую часть экрана, чтобы управлять кораблем.</p>
+    <p data-i18n="tutorial_desc_2">Рекомендуется использовать горизонтальное положение устройства.</p>
+    <button id="tutorial-continue-button" data-i18n="tutorial_btn_ok">Понятно!</button>
   </div>
 
+  <!-- Claim Screen -->
   <div id="claim-screen" class="menu-screen hidden">
-    <h1>Получить награду</h1>
-    <p>Возможность получать награды в виде криптовалютных токенов появится в будущем!</p>
-    <button id="claim-close-button">Закрыть</button>
+    <h1 data-i18n="claim_title">Получить награду</h1>
+    <p data-i18n="claim_desc">Возможность получать награды в виде криптовалютных токенов появится в будущем!</p>
+    <button id="claim-close-button" data-i18n="btn_close">Закрыть</button>
   </div>
 
+  <!-- Entry Warning -->
   <div id="entry-box" class="hidden">
-    <h1>Внимание</h1>
-    <p>Впереди высокоинтенсивные визуальные эффекты и вспышки света. При ощущении дискомфорта или усталости, пожалуйста, прервите сеанс игры.</p>
-    <button id="entry-button">Начать</button>
+    <h1 data-i18n="warning_title">Внимание</h1>
+    <p data-i18n="warning_text">Впереди высокоинтенсивные визуальные эффекты и вспышки света. При ощущении дискомфорта или усталости, пожалуйста, прервите сеанс игры.</p>
+    <button id="entry-button" data-i18n="btn_start">Начать</button>
   </div>
 
+  <!-- Total Score -->
   <div id="total-score-container" class="hidden">
-    Общий баланс: <span id="total-score">0</span>
+    <span data-i18n="total_balance">Общий баланс:</span> <span id="total-score">0</span>
   </div>
 
-  <button id="claim-button" class="hidden">Claim</button>
+  <button id="claim-button" class="hidden" data-i18n="btn_claim">Claim</button>
 
+  <!-- Start Screen -->
   <div id="start-screen" class="initially-hidden">
     <h1>Audio<span class="silver-trip">Trip</span></h1>
     <div id="start-prompt">
-      Введите название песни, чтобы начать
+      <span data-i18n="start_prompt">Введите название песни, чтобы начать</span>
       <br>
-      <small>(Может потребоваться VPN)</small>
+      <small data-i18n="start_vpn">(Может потребоваться VPN)</small>
     </div>
 
     <div id="search-container">
-      <input type="text" id="song-search-input" placeholder="Исполнитель - Название..." autocomplete="off">
+      <input type="text" id="song-search-input" placeholder="Artist - Track Name..." autocomplete="off">
       <div id="autocomplete-results" class="hidden"></div>
     </div>
 
-    <p class="or-separator">ИЛИ</p>
+    <p class="or-separator" data-i18n="or">ИЛИ</p>
 
     <div class="main-menu-actions">
-      <label for="audio-file-input" class="file-label" id="file-label">Выбрать файл</label>
-      <button id="history-button">История</button>
-      <button id="leaderboard-button">Лидеры</button>
+      <label for="audio-file-input" class="file-label" id="file-label" data-i18n="btn_choose_file">Выбрать файл</label>
+      <button id="history-button" data-i18n="btn_history">История</button>
+      <button id="leaderboard-button" data-i18n="btn_leaders">Лидеры</button>
     </div>
     <input type="file" id="audio-file-input" accept="*"/>
   </div>
 
+  <!-- Loading Screen -->
   <div id="loading-screen" class="hidden">
-    <p id="loading-text">Пожалуйста, подождите</p>
-    <p id="analysis-text">Анализ трека...</p>
+    <p id="loading-text" data-i18n="loading_wait">Пожалуйста, подождите</p>
+    <p id="analysis-text" data-i18n="loading_analysis">Анализ трека...</p>
   </div>
 
+  <!-- HUD -->
   <div id="game-hud" class="hidden">
     <div id="score-container">
-      Счет: <span id="score">0</span> <span id="score-multiplier"></span>
+      <span data-i18n="hud_score">Счет:</span>&nbsp;<span id="score">0</span>&nbsp;<span id="score-multiplier"></span>
     </div>
-    <button id="pause-button">pause</button>
+    <button id="pause-button" data-i18n="btn_pause">pause</button>
   </div>
 
+  <!-- Pause Menu -->
   <div id="pause-menu" class="hidden">
-    <h1>Пауза</h1>
-    <button id="resume-button">Продолжить</button>
-    <button id="main-menu-button">Главное меню</button>
+    <h1 data-i18n="pause_title">Пауза</h1>
+    <button id="resume-button" data-i18n="btn_resume">Продолжить</button>
+    <button id="main-menu-button" data-i18n="btn_menu">Главное меню</button>
   </div>
 
+  <!-- Rank UI -->
   <div id="style-rank-container" class="hidden">
     <img id="rank-image" src="" alt="Current Rank"/>
     <div id="progress-bar-container">
@@ -110,10 +121,11 @@
     </div>
   </div>
 
+  <!-- End Screen -->
   <div id="end-screen" class="hidden">
-    <h1>Заезд завершен!</h1>
-    <p>Итоговый счет: <span id="final-score">0</span></p>
-    <button id="restart-button">В меню</button>
+    <h1 data-i18n="end_title">Заезд завершен!</h1>
+    <p><span data-i18n="end_score">Итоговый счет:</span> <span id="final-score">0</span></p>
+    <button id="restart-button" data-i18n="btn_menu">В меню</button>
   </div>
 </div>
 

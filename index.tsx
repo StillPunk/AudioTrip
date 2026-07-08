@@ -3632,17 +3632,13 @@ function updateVideoScreensPosition() {
  * ЗАРАНЕЕ загружает все видео-чанки в фоне, не создавая 3D-объектов.
  * Вызывается сразу после выбора файла.
  */
-async function preloadVideoScreens() {
+function preloadVideoScreens() {
   if (!videoUrl.trim()) return;
-  console.log("Начинаю предзагрузку видео-чанков...");
+  console.log("Начинаю фоновую загрузку чанков параллельно...");
 
-  // const assumedDuration = 240;
   const segmentDuration = 30;
 
   for (let i = 0; i < NUM_SCREENS; i++) {
-    const startTime = Math.floor(i * segmentDuration);
-    const chunkUrl = `https://audiotrip.space/get-video-chunk?url=${encodeURIComponent(videoUrl)}&startTime=${startTime}&duration=${segmentDuration}`;
-
     const video = document.createElement('video');
     (video as any).isReady = false;
 
@@ -3651,36 +3647,26 @@ async function preloadVideoScreens() {
     video.crossOrigin = 'anonymous';
     video.muted = true;
     video.loop = true;
-    video.preload = 'auto';
     document.body.appendChild(video);
     videoElements.push(video);
 
-    video.addEventListener('canplay', () => {
-      console.log(`Видео-чанк ${i} готов, начинаю буферизацию...`);
+    const startTime = Math.floor(i * segmentDuration);
+    const chunkUrl = `https://audiotrip.space/get-video-chunk?url=${encodeURIComponent(videoUrl)}&startTime=${startTime}&duration=${segmentDuration}`;
 
-      const playPromise = video.play();
-      if (playPromise !== undefined) {
-        playPromise.then(() => {
-          video.pause();
-          (video as any).isReady = true;
-          console.log(`Видео-чанк ${i} отбуферизирован.`);
-        }).catch(error => {
-          console.error(`Ошибка авто-воспроизведения для буферизации:`, error);
-          (video as any).isReady = true;
-        });
-      }
-    }, { once: true });
-
-    video.addEventListener('canplaythrough', () => {
-      (video as any).isReady = true;
-    }, { once: true });
-
-    video.addEventListener('error', () => {
-      (video as any).isReady = false;
-    }, { once: true });
-
-    video.src = chunkUrl;
-    video.load();
+    fetch(chunkUrl)
+      .then(response => {
+        if (!response.ok) throw new Error(`Ошибка: ${response.status}`);
+        return response.blob();
+      })
+      .then(blob => {
+        const blobUrl = URL.createObjectURL(blob);
+        video.src = blobUrl;
+        (video as any).isReady = true;
+        console.log(`[ФОН] Видео-чанк ${i} успешно загружен!`);
+      })
+      .catch(error => {
+        console.error(`[ФОН] Ошибка скачивания чанка ${i}:`, error);
+      });
   }
 }
 

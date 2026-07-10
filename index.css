@@ -681,3 +681,33 @@ td:nth-child(3) {
 .style-rank-antiverse #progress-bar-fill {
   background: linear-gradient(90deg, #F52721, #ff4444, #F52721);
 }
+
+#tg-fallback {
+  text-align: center;
+  border: 2px solid #0ff;
+  padding: 40px;
+  border-radius: 15px;
+  box-shadow: 0 0 15px #0ff;
+  background: rgba(0, 0, 0, 0.9);
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 1000;
+}
+#tg-fallback h1 { color: #0ff; font-family: 'Orbitron', sans-serif; }
+.tg-link {
+  display: inline-block;
+  margin-top: 20px;
+  padding: 15px 30px;
+  border: 2px solid #0ff;
+  color: #0ff;
+  text-decoration: none;
+  border-radius: 5px;
+  transition: all 0.3s;
+}
+.tg-link:hover {
+  background-color: #0ff;
+  color: #000;
+  box-shadow: 0 0 20px #0ff;
+}

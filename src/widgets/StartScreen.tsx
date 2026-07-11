@@ -29,7 +29,7 @@ export default function StartScreen() {
         duration: 0.7,
         delay: 0.2,
         ease: 'power3.out',
-      }
+      },
     ).to(el, {
       scale: 1,
       duration: 0.4,

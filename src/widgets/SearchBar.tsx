@@ -34,7 +34,7 @@ export default function SearchBar() {
       };
       document.body.appendChild(script);
     },
-    [setSearchResults]
+    [setSearchResults],
   );
 
   useEffect(() => {

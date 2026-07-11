@@ -183,7 +183,8 @@ export function updateStyleUI() {
     store.setProgress(1);
   } else {
     const hitsForNextRank = config.STYLE_RANKS[state.currentRankIndex + 1].hitsNeeded;
-    const progress = (state.consecutiveHits - currentRank.hitsNeeded) / (hitsForNextRank - currentRank.hitsNeeded);
+    const progress =
+      (state.consecutiveHits - currentRank.hitsNeeded) / (hitsForNextRank - currentRank.hitsNeeded);
     store.setProgress(Math.min(progress, 1));
   }
 
@@ -242,7 +243,9 @@ export function setScreenStart() {
   store.setFileInputDisabled(false);
   store.setTotalScoreVisible(true);
   store.setClaimButtonVisible(true);
-  store.setStartPrompt(`${i18nT(store.currentLang, 'start_prompt')}<br><small>${i18nT(store.currentLang, 'start_vpn')}</small>`);
+  store.setStartPrompt(
+    `${i18nT(store.currentLang, 'start_prompt')}<br><small>${i18nT(store.currentLang, 'start_vpn')}</small>`,
+  );
 }
 
 export function setScreenEntry() {

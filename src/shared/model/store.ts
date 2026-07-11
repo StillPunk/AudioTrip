@@ -109,7 +109,8 @@ export const useUIStore = create<UIStore>((set) => ({
   setScreen: (screen) => set({ screen }),
   setLoadingText: (loadingText) => set({ loadingText }),
   setSearchQuery: (searchQuery) => set({ searchQuery }),
-  setSearchResults: (searchResults, searchResultsVisible = true) => set({ searchResults, searchResultsVisible }),
+  setSearchResults: (searchResults, searchResultsVisible = true) =>
+    set({ searchResults, searchResultsVisible }),
   hideSearchResults: () => set({ searchResultsVisible: false }),
   setScore: (score) => set({ score }),
   setFinalScore: (finalScore) => set({ finalScore }),

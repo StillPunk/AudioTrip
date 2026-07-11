@@ -23,5 +23,5 @@ export default tseslint.config(
       '@typescript-eslint/no-explicit-any': 'warn',
       'no-empty': ['error', { allowEmptyCatch: true }],
     },
-  }
+  },
 );

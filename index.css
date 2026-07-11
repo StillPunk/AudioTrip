@@ -12,7 +12,9 @@ body {
   background-color: #000;
   color: #fff;
   font-family: 'Jura', sans-serif;
-  text-shadow: 0 0 5px #0ff, 0 0 10px #0ff;
+  text-shadow:
+    0 0 5px #0ff,
+    0 0 10px #0ff;
   user-select: none;
   touch-action: none;
   height: 100%;
@@ -51,7 +53,9 @@ body {
   background-clip: text;
   color: transparent;
 
-  text-shadow: 0 0 7px #ffffff, 0 0 15px #d3d3d3;
+  text-shadow:
+    0 0 7px #ffffff,
+    0 0 15px #d3d3d3;
 }
 
 #entry-box {
@@ -59,7 +63,9 @@ body {
   padding: 30px;
   border-radius: 15px;
   border: 2px solid #ff4500;
-  box-shadow: 0 0 15px #ff4500, inset 0 0 10px #ff4500;
+  box-shadow:
+    0 0 15px #ff4500,
+    inset 0 0 10px #ff4500;
   pointer-events: all;
   min-width: 300px;
   max-width: 500px;
@@ -74,7 +80,9 @@ body {
 
 #entry-box h1 {
   color: #ff4500;
-  text-shadow: 0 0 5px #ff4500, 0 0 10px #ff4500;
+  text-shadow:
+    0 0 5px #ff4500,
+    0 0 10px #ff4500;
 }
 
 #entry-box p {
@@ -123,12 +131,16 @@ body {
   pointer-events: none;
 }
 
-#start-screen, #loading-screen, #end-screen {
+#start-screen,
+#loading-screen,
+#end-screen {
   background: rgba(0, 0, 0, 0.7);
   padding: 30px;
   border-radius: 15px;
   border: 2px solid #0ff;
-  box-shadow: 0 0 15px #0ff, inset 0 0 10px #0ff;
+  box-shadow:
+    0 0 15px #0ff,
+    inset 0 0 10px #0ff;
   pointer-events: all;
   min-width: 300px;
   max-width: 800px;
@@ -143,7 +155,10 @@ h1 {
   margin-top: 0;
   color: #0ff;
   margin-bottom: 10px;
-  text-shadow: 0 0 5px #0ff, 0 0 10px #0ff, 0 0 20px #0ff;
+  text-shadow:
+    0 0 5px #0ff,
+    0 0 10px #0ff,
+    0 0 20px #0ff;
 }
 
 p {
@@ -156,11 +171,12 @@ p {
   text-shadow: 0 0 8px #0ff;
 }
 
-input[type="file"] {
+input[type='file'] {
   display: none;
 }
 
-.file-label, button {
+.file-label,
+button {
   background-color: transparent;
   border: 2px solid #0ff;
   color: #0ff;
@@ -172,7 +188,10 @@ input[type="file"] {
   margin-top: 20px;
   cursor: pointer;
   border-radius: 5px;
-  transition: background-color 0.3s, color 0.3s, box-shadow 0.3s;
+  transition:
+    background-color 0.3s,
+    color 0.3s,
+    box-shadow 0.3s;
   pointer-events: all;
   font-family: 'Jura', sans-serif;
   text-shadow: 0 0 5px #0ff;
@@ -180,7 +199,8 @@ input[type="file"] {
   align-self: center;
 }
 
-.file-label:hover, button:hover {
+.file-label:hover,
+button:hover {
   background-color: #0ff;
   color: #000;
   box-shadow: 0 0 20px #0ff;
@@ -214,7 +234,10 @@ input[type="file"] {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  transition: border-color 0.3s, box-shadow 0.3s, color 0.3s;
+  transition:
+    border-color 0.3s,
+    box-shadow 0.3s,
+    color 0.3s;
   @media (orientation: portrait) {
     margin-top: 85px;
     margin-left: 0;
@@ -226,7 +249,11 @@ input[type="file"] {
   margin-left: 20px;
   padding: 2px 8px;
   font-size: 14px;
-  transition: background-color 0.3s, color 0.3s, box-shadow 0.3s, border-color 0.3s;
+  transition:
+    background-color 0.3s,
+    color 0.3s,
+    box-shadow 0.3s,
+    border-color 0.3s;
   background: transparent;
   width: fit-content;
   align-self: flex-start;
@@ -242,32 +269,32 @@ input[type="file"] {
 
 #game-hud.style-rank-blue #score-container,
 #game-hud.style-rank-blue #pause-button {
-  border-color: #87CEEB;
-  box-shadow: 0 0 10px #87CEEB;
+  border-color: #87ceeb;
+  box-shadow: 0 0 10px #87ceeb;
 }
 
 #game-hud.style-rank-blue #score-container,
 #game-hud.style-rank-blue #pause-button,
 #game-hud.style-rank-blue #score-multiplier {
-  color: #E0FFFF;
-  text-shadow: 0 0 8px #87CEEB;
+  color: #e0ffff;
+  text-shadow: 0 0 8px #87ceeb;
 }
 
 #game-hud.style-rank-gold #score-container,
 #game-hud.style-rank-gold #pause-button {
-  border-color: #FFD700;
-  box-shadow: 0 0 12px #FFD700;
+  border-color: #ffd700;
+  box-shadow: 0 0 12px #ffd700;
 }
 
 #game-hud.style-rank-gold #score-container {
-  animation: hud-pulse .8s ease-in-out infinite;
+  animation: hud-pulse 0.8s ease-in-out infinite;
 }
 
 #game-hud.style-rank-gold #score-container,
 #game-hud.style-rank-gold #pause-button,
 #game-hud.style-rank-gold #score-multiplier {
-  color: #FFFF00;
-  text-shadow: 0 0 8px #FFA500;
+  color: #ffff00;
+  text-shadow: 0 0 8px #ffa500;
 }
 
 #pause-menu {
@@ -275,7 +302,9 @@ input[type="file"] {
   padding: 40px;
   border-radius: 15px;
   border: 2px solid #0ff;
-  box-shadow: 0 0 15px #0ff, inset 0 0 10px #0ff;
+  box-shadow:
+    0 0 15px #0ff,
+    inset 0 0 10px #0ff;
   pointer-events: all;
   min-width: 300px;
   display: flex;
@@ -341,32 +370,36 @@ input[type="file"] {
   background-color: rgba(0, 0, 0, 0.5);
   border-radius: 5px;
   padding: 2px;
-  transition: border-color 0.3s, box-shadow 0.3s;
+  transition:
+    border-color 0.3s,
+    box-shadow 0.3s;
 }
 
 #progress-bar-fill {
   height: 100%;
   width: 0%;
   border-radius: 3px;
-  transition: width 0.3s ease-out, background 0.3s;
+  transition:
+    width 0.3s ease-out,
+    background 0.3s;
 }
 
 .style-rank-blue #progress-bar-container {
-  border: 2px solid #87CEEB;
-  box-shadow: 0 0 10px #87CEEB;
+  border: 2px solid #87ceeb;
+  box-shadow: 0 0 10px #87ceeb;
 }
 
 .style-rank-blue #progress-bar-fill {
-  background: linear-gradient(90deg, #E0FFFF, #87CEEB, #00BFFF);
+  background: linear-gradient(90deg, #e0ffff, #87ceeb, #00bfff);
 }
 
 .style-rank-gold #progress-bar-container {
-  border: 2px solid #FFD700;
-  box-shadow: 0 0 12px #FFD700;
+  border: 2px solid #ffd700;
+  box-shadow: 0 0 12px #ffd700;
 }
 
 .style-rank-gold #progress-bar-fill {
-  background: linear-gradient(90deg, #FFFF00, #FFA500, #FF4500);
+  background: linear-gradient(90deg, #ffff00, #ffa500, #ff4500);
 }
 
 #score-multiplier {
@@ -384,11 +417,16 @@ input[type="file"] {
   transform: scale(0.95);
   visibility: hidden;
   pointer-events: none;
-  transition: opacity 0.25s ease-in, transform 0.25s ease-in, visibility 0s linear 0.25s;
+  transition:
+    opacity 0.25s ease-in,
+    transform 0.25s ease-in,
+    visibility 0s linear 0.25s;
 }
 
 .menu-screen {
-  transition: opacity 0.25s ease-out, transform 0.25s ease-out;
+  transition:
+    opacity 0.25s ease-out,
+    transform 0.25s ease-out;
 }
 
 @keyframes hud-pulse {
@@ -479,7 +517,9 @@ input[type="file"] {
   cursor: pointer;
   text-shadow: none;
   border-bottom: 1px solid #055;
-  transition: background-color 0.2s, color 0.2s;
+  transition:
+    background-color 0.2s,
+    color 0.2s;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -502,7 +542,9 @@ input[type="file"] {
   padding: 20px 0;
   border-radius: 15px;
   border: 2px solid #0ff;
-  box-shadow: 0 0 15px #0ff, inset 0 0 10px #0ff;
+  box-shadow:
+    0 0 15px #0ff,
+    inset 0 0 10px #0ff;
   pointer-events: all;
   display: flex;
   flex-direction: column;
@@ -575,7 +617,8 @@ table {
   border-collapse: collapse;
 }
 
-th, td {
+th,
+td {
   padding: 12px 15px;
   text-align: left;
   text-shadow: none;
@@ -607,7 +650,8 @@ tbody tr:hover {
   background-color: #044;
 }
 
-td:nth-child(2), td:nth-child(3) {
+td:nth-child(2),
+td:nth-child(3) {
   text-align: center;
 }
 
@@ -666,8 +710,10 @@ td:nth-child(3) {
 
 .style-rank-antiverse #progress-bar-container,
 .style-rank-antiverse #score-container {
-  border-color: #F52721;
-  box-shadow: 0 0 15px #F52721, 0 0 5px #ff4d4d inset;
+  border-color: #f52721;
+  box-shadow:
+    0 0 15px #f52721,
+    0 0 5px #ff4d4d inset;
   animation: hud-pulse 0.6s ease-in-out infinite;
 }
 
@@ -675,11 +721,13 @@ td:nth-child(3) {
 .style-rank-antiverse #pause-button,
 .style-rank-antiverse #score-multiplier {
   color: #ffffff;
-  text-shadow: 0 0 8px #ff0000, 0 0 12px #F52721;
+  text-shadow:
+    0 0 8px #ff0000,
+    0 0 12px #f52721;
 }
 
 .style-rank-antiverse #progress-bar-fill {
-  background: linear-gradient(90deg, #F52721, #ff4444, #F52721);
+  background: linear-gradient(90deg, #f52721, #ff4444, #f52721);
 }
 
 #tg-fallback {
@@ -695,7 +743,10 @@ td:nth-child(3) {
   transform: translate(-50%, -50%);
   z-index: 1000;
 }
-#tg-fallback h1 { color: #0ff; font-family: 'Orbitron', sans-serif; }
+#tg-fallback h1 {
+  color: #0ff;
+  font-family: 'Orbitron', sans-serif;
+}
 .tg-link {
   display: inline-block;
   margin-top: 20px;

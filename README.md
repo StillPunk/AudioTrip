@@ -2,9 +2,8 @@
 
 AudioTrip is an interactive WebGL-based 3D rhythm game built specifically for the Telegram Mini App (TMA) ecosystem. Players ride down a procedurally generated cosmic track mapped out in real-time to the beats, frequency ranges, and intensity of their chosen audio tracks.
 
-<p align="center">
-  <video src="docs/gameplay_demo.mp4" width="100%" autoplay loop muted playsinline></video>
-</p>
+https://github.com/user-attachments/assets/4c50fd51-4faa-4f02-8ee8-780876e1d089
+
 
 The project features a highly optimized rendering loop using **Three.js**, responsive state-management via **Zustand**, and real-time audio analysis with the **Web Audio API**.
 

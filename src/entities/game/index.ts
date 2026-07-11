@@ -119,29 +119,12 @@ export async function onFileSelect(event: Event) {
             state.solarSystemEnvironmentInitialized = true;
         }
         await graphics.forceGpuPrewarm().then(() => {
-            const cleanSearchQuery = (rawQuery: string): string => {
-                return rawQuery
-                    // Удаляем все в скобках () и []
-                    .replace(/\[.*?\]/g, '')
-                    .replace(/\(.*?\)/g, '')
-                    // Удаляем типичные слова-паразиты
-                    .replace(/official music video|official video|lyrics|audio|hd|4k/gi, '')
-                    // Удаляем сайты
-                    .replace(/(www\.|http:\/\/|https:\/\/)[^\s]+/g, '')
-                    // Удаляем расширение файла
-                    .replace(/\.[^/.]+$/, "")
-                    // Удаляем номера треков (01., 02 -)
-                    .replace(/^\d+\s*[-.]?\s*/, '')
-                    // Заменяем разные тире на стандартный дефис
-                    .replace(/[—–_]/g, '-')
-                    .trim();
-            };
             const searchAndPreload = (query: string) => {
                 if (!query) {
                     console.warn("[ПОИСК] Не удалось сформировать поисковый запрос.");
                     return;
                 }
-                const cleanedQuery = cleanSearchQuery(query);
+                const cleanedQuery = utils.cleanSearchQuery(query);
                 console.log(`[ПОИСК] Отправляю ОЧИЩЕННЫЙ запрос на сервер: "${cleanedQuery}"`);
                 fetch(`https://audiotrip.space/search-video?q=${encodeURIComponent(cleanedQuery)}`)
                     .then(response => {

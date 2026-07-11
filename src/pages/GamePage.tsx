@@ -13,10 +13,11 @@ import HistoryScreen from '@/widgets/HistoryScreen';
 import LeaderboardScreen from '@/widgets/LeaderboardScreen';
 import TutorialScreen from '@/widgets/TutorialScreen';
 import ClaimScreen from '@/widgets/ClaimScreen';
+import TotalScore from '@/widgets/TotalScore';
+import ClaimButton from '@/widgets/ClaimButton';
 
 export default function GamePage() {
   const screen = useUIStore((s) => s.screen);
-  const tutorialVisible = useUIStore((s) => s.tutorialVisible);
 
   useEffect(() => {
     void bootstrapGame();
@@ -29,14 +30,16 @@ export default function GamePage() {
         {screen === 'telegram-fallback' && <TelegramFallback />}
         {screen === 'entry' && <EntryBox />}
         {screen === 'start' && <StartScreen />}
-        {screen === 'loading' && <LoadingScreen />}
-        {(screen === 'game' || screen === 'paused') && <GameHud />}
-        {screen === 'paused' && <PauseMenu />}
-        {screen === 'end' && <EndScreen />}
-        {screen === 'history' && <HistoryScreen />}
-        {screen === 'leaderboard' && <LeaderboardScreen />}
-        {screen === 'claim' && <ClaimScreen />}
-        {tutorialVisible && <TutorialScreen />}
+        <LoadingScreen hidden={screen !== 'loading'} />
+        <GameHud />
+        <PauseMenu />
+        <EndScreen hidden={screen !== 'end'} />
+        <HistoryScreen hidden={screen !== 'history'} />
+        <LeaderboardScreen hidden={screen !== 'leaderboard'} />
+        <ClaimScreen hidden={screen !== 'claim'} />
+        <TutorialScreen />
+        <TotalScore />
+        <ClaimButton />
       </div>
     </>
   );

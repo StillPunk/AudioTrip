@@ -1,21 +1,45 @@
+import { useRef, useLayoutEffect } from 'react';
 import { useUIStore } from '@/shared/model/store';
 import * as game from '@/entities/game';
 import * as ui from '@/entities/ui';
 import * as audio from '@/entities/audio';
 import SearchBar from './SearchBar';
 import { useTranslation } from '@/shared/lib/i18n';
+import gsap from 'gsap';
 
 export default function StartScreen() {
-  const screen = useUIStore((s) => s.screen);
+  const startRef = useRef<HTMLDivElement>(null);
   const startPrompt = useUIStore((s) => s.startPrompt);
   const fileLabelVisible = useUIStore((s) => s.fileLabelVisible);
   const fileInputDisabled = useUIStore((s) => s.fileInputDisabled);
-  const totalScoreVisible = useUIStore((s) => s.totalScoreVisible);
-  const totalScore = useUIStore((s) => s.totalScore);
-  const claimVisible = useUIStore((s) => s.claimButtonVisible);
   const t = useTranslation();
 
-  if (screen !== 'start') return null;
+  useLayoutEffect(() => {
+    const el = startRef.current;
+    if (!el) return;
+
+    const tl = gsap.timeline();
+    tl.fromTo(
+      el,
+      { opacity: 0, scale: 0.7, y: 100 },
+      {
+        opacity: 1,
+        scale: 1.05,
+        y: 0,
+        duration: 0.7,
+        delay: 0.2,
+        ease: 'power3.out',
+      }
+    ).to(el, {
+      scale: 1,
+      duration: 0.4,
+      ease: 'back.out(1.7)',
+    });
+
+    return () => {
+      tl.kill();
+    };
+  }, []);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -26,7 +50,7 @@ export default function StartScreen() {
   const playClick = () => audio.soundManager.playSound('buttonclick');
 
   return (
-    <div id="start-screen" style={{ pointerEvents: 'all' }}>
+    <div id="start-screen" ref={startRef}>
       <h1>
         Audio<span className="silver-trip">Trip</span>
       </h1>
@@ -50,23 +74,27 @@ export default function StartScreen() {
           disabled={fileInputDisabled}
           className="hidden"
         />
-        <button id="history-button" onMouseEnter={playHover} onClick={() => { playClick(); void ui.loadHistory().then(() => useUIStore.getState().setScreen('history')); }}>
+        <button
+          id="history-button"
+          onMouseEnter={playHover}
+          onClick={() => {
+            playClick();
+            void ui.loadHistory().then(() => useUIStore.getState().setScreen('history'));
+          }}
+        >
           {t('btn_history')}
         </button>
-        <button id="leaderboard-button" onMouseEnter={playHover} onClick={() => { playClick(); useUIStore.getState().setScreen('leaderboard'); }}>
+        <button
+          id="leaderboard-button"
+          onMouseEnter={playHover}
+          onClick={() => {
+            playClick();
+            useUIStore.getState().setScreen('leaderboard');
+          }}
+        >
           {t('btn_leaders')}
         </button>
       </div>
-      {totalScoreVisible && (
-        <div id="total-score-container">
-          <span>{t('total_balance')}</span> <span id="total-score">{totalScore}</span>
-        </div>
-      )}
-      {claimVisible && (
-        <button id="claim-button" onMouseEnter={playHover} onClick={() => { playClick(); useUIStore.getState().setScreen('claim'); }}>
-          {t('btn_claim')}
-        </button>
-      )}
     </div>
   );
 }

@@ -1,13 +1,13 @@
 import { useUIStore } from '@/shared/model/store';
 import { useTranslation } from '@/shared/lib/i18n';
 
-export default function HistoryScreen() {
+export default function HistoryScreen({ hidden }: { hidden: boolean }) {
   const history = useUIStore((s) => s.history);
   const setScreen = useUIStore((s) => s.setScreen);
   const t = useTranslation();
 
   return (
-    <div id="history-screen" className="menu-screen">
+    <div id="history-screen" className={`menu-screen ${hidden ? 'hidden' : ''}`}>
       <h1>{t('history_title')}</h1>
       <div id="history-table-container">
         <table>

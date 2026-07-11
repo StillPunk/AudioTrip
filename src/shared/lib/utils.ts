@@ -116,6 +116,18 @@ export function getInterpolatedFrame(progress: number, targetFrame = state._reus
     targetFrame.binormal.crossVectors(targetFrame.tangent, targetFrame.normal);
     return targetFrame;
 }
+export function cleanSearchQuery(rawQuery: string): string {
+    return rawQuery
+        .replace(/\[.*?\]/g, '')
+        .replace(/\(.*?\)/g, '')
+        .replace(/official music video|official video|lyrics|audio|hd|4k/gi, '')
+        .replace(/(www\.|http:\/\/|https:\/\/)[^\s]+/g, '')
+        .replace(/\.[^/.]+$/, '')
+        .replace(/^\d+\s*[-.]?\s*/, '')
+        .replace(/[—–_]/g, '-')
+        .trim();
+}
+
 export function getTargetColor(energy: number): THREE.Color {
     const calmLow = new THREE.Color(0x00bfff); // blue: DeepSkyBlue
     const calmHigh = new THREE.Color(0x20c20e); // green
